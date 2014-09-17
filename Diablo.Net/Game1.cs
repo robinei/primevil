@@ -1,6 +1,8 @@
 ﻿#region Using Statements
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq.Expressions;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
@@ -50,7 +52,21 @@ namespace Diablo.Net
 
             // TODO: use this.Content to load your game content here
 
-            var archive = new MPQArchive("DIABDAT.MPQ");
+            var mpq = new MPQArchive("DIABDAT.MPQ");
+            var buf = new byte[mpq.BlockSize];
+
+            var f = mpq.Open("ctrlpan/golddrop.cel");
+
+            int total = 0;
+            while (true) {
+                int len = f.Read(buf, 0, buf.Length);
+                total += len;
+                if (len < buf.Length)
+                    break;
+            }
+
+            Debug.WriteLine("Length: " + f.Length);
+            Debug.WriteLine("total: " + total);
         }
 
         /// <summary>

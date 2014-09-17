@@ -35,7 +35,7 @@
     <ApplicationIcon>Icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="PkZipDecoder.cs" />
+    <Compile Include="PkUnzipper.cs" />
     <Compile Include="Diabdat.cs" />
     <Compile Include="Game1.cs" />
     <Compile Include="MPQArchive.cs" />

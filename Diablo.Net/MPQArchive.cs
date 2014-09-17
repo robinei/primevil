@@ -49,22 +49,22 @@ namespace Diablo.Net
         // ReSharper restore MemberCanBePrivate.Local
 
 
-        public class File
-        {
-        }
 
-        private class FileImpl : File
+        private class FileHandle
         {
             public string Path;
+            public FileStream Stream;
+            public uint DecryptionKey;
+
             public BlockEntry Entry;
 
-            public uint CurrBlock;
+            public uint Pos;
+            public uint BlockIndex;
+
             public uint BlockCount;
             public uint[] BlockOffsets;
-            public uint Key;
 
             public byte[] BlockBuffer;
-            public uint BlockPos;
             public uint BlockSize;
         }
 
@@ -89,40 +89,43 @@ namespace Diablo.Net
 
         private const uint CompressedFlagsMask = FileImplode | FileCompress;
 
-        //private const uint InvalidPos = 0xffffffff;
+        private static readonly uint[] CryptTable = new uint[0x500];
 
-        private readonly FileStream _file;
-        private Header _header;
+        private readonly string archivePath;
+        private Header header;
+        private uint[] hashTable;
+        private uint[] blockTable;
+        
+        public readonly uint BlockSize;
 
-        private readonly uint[] _cryptTable = new uint[0x500];
-        private uint[] _hashTable;
-        private uint[] _blockTable;
-        private readonly uint _blockSize;
-        //private uint _blockSizeMask;
+
+        static MPQArchive()
+        {
+            PrepareCryptTable();
+        }
 
         public MPQArchive(string path)
         {
-            _file = new FileStream(path, FileMode.Open);
-            ReadStruct(_file, out _header);
-            if (_header.ID != FourCC)
+            archivePath = path;
+            var file = new FileStream(path, FileMode.Open, FileAccess.Read);
+            ReadStruct(file, out header);
+            if (header.ID != FourCC)
                 throw new Exception("bad file header");
-            if (_header.FormatVersion != 0)
+            if (header.FormatVersion != 0)
                 throw new NotImplementedException();
 
-            PrepareCryptTable();
-            ReadHashTable();
-            ReadBlockTable();
+            BlockSize = (uint)0x200 << header.BlockSize;
+            ReadHashTable(file);
+            ReadBlockTable(file);
 
-            _blockSize = (uint)0x200 << _header.BlockSize;
-            //_blockSizeMask = _blockSize - 1;
-            Debug.WriteLine("BlockSize: " + _blockSize);
-            Debug.WriteLine("BlockTableSize: " + _header.BlockTableSize);
+            //Debug.WriteLine("BlockSize: " + BlockSize);
+            //Debug.WriteLine("BlockTableSize: " + header.BlockTableSize);
 
-            uint hashKey = HashString("(hash table)", 0x300);
+            /*uint hashKey = HashString("(hash table)", 0x300);
             uint blockKey = HashString("(block table)", 0x300);
             Debug.Assert(hashKey == HashTableKey);
-            Debug.Assert(blockKey == BlockTableKey);
-
+            Debug.Assert(blockKey == BlockTableKey);*/
+            /*
             int count = 0;
             foreach (var name in Diabdat.Names) {
                 var index = BlockIndexForPath(name);
@@ -146,7 +149,7 @@ namespace Diablo.Net
                 var f = Open(name);
 
                 var temp = new byte[10];
-                Read(f, temp, 0, 10);
+                f.Read(temp, 0, 10);
 
                 break;
             }
@@ -156,21 +159,24 @@ namespace Diablo.Net
             var input = new byte[] {0x00, 0x04, 0x82, 0x24, 0x25, 0x8f, 0x80, 0x7f};
             var output = new byte[4096];
 
-            var decoder = new PkZipDecoder();
+            var decoder = new PkUnzipper();
             uint len = decoder.Decompress(input, 0, input.Length, output);
             Debug.WriteLine("decompressed length: " + len);
             string s = output.Aggregate("", (current, b) => current + (char)b);
-            Debug.WriteLine("decompressed string: " + s);
+            Debug.WriteLine("decompressed string: " + s);*/
         }
 
-        File Open(string path)
+
+
+        public MPQStream Open(string path)
         {
             int index = BlockIndexForPath(path);
             if (index < 0)
                 throw new FileNotFoundException();
 
-            var f = new FileImpl {
-                Path = path
+            var f = new FileHandle {
+                Path = path,
+                Stream = new FileStream(archivePath, FileMode.Open, FileAccess.Read)
             };
             GetBlockEntry(index, out f.Entry);
 
@@ -191,25 +197,102 @@ namespace Diablo.Net
                 throw new NotImplementedException();
 
             Debug.Assert(f.Entry.FSize > 0);
-            f.CurrBlock = 0;
-            f.BlockCount = 1 + (f.Entry.FSize - 1) / _blockSize;
+            f.Pos = 0;
+            f.BlockIndex = 0xffffffff; // initially invalid
+            f.BlockCount = 1 + (f.Entry.FSize - 1) / BlockSize;
             Debug.WriteLine("f.BlockCount: " + f.BlockCount);
             Debug.WriteLine("f.Entry.FilePos: " + f.Entry.FilePos);
 
-            // calc decryption key
             if ((f.Entry.Flags & FileEncrypted) != 0)
-                f.Key = FileKey(f.Path, ref f.Entry);
+                f.DecryptionKey = FileKey(f.Path, ref f.Entry);
 
             LoadOffsetsTable(f);
 
-            f.BlockBuffer = new byte[_blockSize];
-            f.BlockPos = 0;
+            f.BlockBuffer = new byte[BlockSize];
             f.BlockSize = 0;
 
-            return f;
+            return new MPQStream(this, f);
         }
 
-        private void LoadOffsetsTable(FileImpl f)
+        internal long Length(MPQStream stream)
+        {
+            var f = (FileHandle)stream.Handle;
+            return f.Entry.FSize;
+        }
+
+        internal long Position(MPQStream stream)
+        {
+            var f = (FileHandle)stream.Handle;
+            return 0;
+        }
+
+        internal long Seek(MPQStream stream, long offset, SeekOrigin origin)
+        {
+            var f = (FileHandle)stream.Handle;
+            long pos;
+            switch (origin) {
+            case SeekOrigin.Begin:
+                pos = offset;
+                break;
+            case SeekOrigin.End:
+                pos = f.Entry.FSize + offset;
+                break;
+            default: // SeekOrigin.Current
+                pos = f.Pos + offset;
+                break;
+            }
+            if (pos < 0)
+                pos = 0;
+            if (pos > f.Entry.FSize)
+                pos = f.Entry.FSize;
+            f.Pos = (uint)pos;
+            return pos;
+        }
+
+        internal int Read(MPQStream stream, byte[] buffer, int offset, int count)
+        {
+            if (offset + count > buffer.Length)
+                throw new ArgumentException();
+
+            var f = (FileHandle)stream.Handle;
+            if (f.Pos >= f.Entry.FSize)
+                return 0;
+
+            var blockIndex = f.Pos / BlockSize;
+            var blockPos = f.Pos % BlockSize;
+
+            if (blockIndex != f.BlockIndex) {
+                var pos = f.Entry.FilePos + f.BlockOffsets[blockIndex];
+                uint size = f.BlockOffsets[blockIndex + 1] - f.BlockOffsets[blockIndex];
+
+                var buf = new byte[size];
+                f.Stream.Seek(pos, SeekOrigin.Begin);
+                f.Stream.Read(buf, 0, (int)size);
+
+                Decrypt(buf, f.DecryptionKey + blockIndex);
+
+                var decoder = new PkUnzipper();
+                f.BlockSize = decoder.Decompress(buf, 0, buf.Length, f.BlockBuffer);
+                Debug.WriteLine("decompressed length: " + f.BlockSize);
+
+                f.BlockIndex = blockIndex;
+                f.BlockSize = size;
+            }
+
+            if (blockPos + count > BlockSize)
+                count = (int)(BlockSize - blockPos);
+            if (f.Pos + count > f.Entry.FSize)
+                count = (int)(f.Entry.FSize - f.Pos);
+
+            Buffer.BlockCopy(f.BlockBuffer, (int)blockPos, buffer, offset, count);
+            f.Pos += (uint)count;
+            return count;
+        }
+
+
+
+
+        private void LoadOffsetsTable(FileHandle f)
         {
             uint offsetsCount = f.BlockCount + 1;
             if ((f.Entry.Flags & FileSectorCrc) != 0)
@@ -220,13 +303,13 @@ namespace Diablo.Net
             // load table
             var offsetsSize = (int)(4 * offsetsCount);
             var offsetsBuffer = new byte[offsetsSize];
-            _file.Seek(f.Entry.FilePos, SeekOrigin.Begin);
-            _file.Read(offsetsBuffer, 0, offsetsSize);
+            f.Stream.Seek(f.Entry.FilePos, SeekOrigin.Begin);
+            f.Stream.Read(offsetsBuffer, 0, offsetsSize);
             Buffer.BlockCopy(offsetsBuffer, 0, f.BlockOffsets, 0, offsetsSize);
 
             // decrypt table
             if ((f.Entry.Flags & FileEncrypted) != 0)
-                Decrypt(f.BlockOffsets, f.Key - 1);
+                Decrypt(f.BlockOffsets, f.DecryptionKey - 1);
 
             // verify table
             for (int i = 0; i < f.BlockCount; ++i) {
@@ -240,82 +323,9 @@ namespace Diablo.Net
                 Debug.WriteLine("offset: " + f.BlockOffsets[i]);
         }
 
-        public int Read(File file, byte[] buffer, uint offset, uint count)
-        {
-            var f = (FileImpl)file;
-
-            if (f.BlockPos == f.BlockSize) {
-                if (f.CurrBlock >= f.BlockCount)
-                    return 0;
-                
-                uint pos = f.Entry.FilePos + f.BlockOffsets[f.CurrBlock];
-                uint size = f.BlockOffsets[f.CurrBlock + 1] - f.BlockOffsets[f.CurrBlock];
-
-                var buf = new byte[size];
-                _file.Seek(pos, SeekOrigin.Begin);
-                _file.Read(buf, 0, (int)size);
-
-                Decrypt(buf, f.Key + f.CurrBlock);
-
-                var decoder = new PkZipDecoder();
-                f.BlockSize = decoder.Decompress(buf, 0, buf.Length, f.BlockBuffer);
-                Debug.WriteLine("decompressed length: " + f.BlockSize);
-
-                f.CurrBlock++;
-                f.BlockPos = 0;
-                f.BlockSize = size;
-            }
-
-            return 0;
-        }
-
-        /*public int Read(File file, byte[] buffer, uint offset, uint count)
-        {
-            if (offset + count > buffer.Length)
-                throw new ArgumentException("buffer not big enough");
-            
-            var f = (FileImpl)file;
-            
-            // If the file position is at or beyond end of file, do nothing
-            if (f.Pos >= f.Entry.FSize)
-                return 0;
-            
-            // If not enough bytes in the file remaining, cut them
-            if (count > (f.Entry.FSize - f.Pos))
-                count = f.Entry.FSize - f.Pos;
-            
-            // Compute block position in the file
-            uint blockPos = f.Pos & ~_blockSizeMask;
-            
-            if (f.BlockBuffer == null)
-                f.BlockBuffer = new byte[_blockSize];
-
-            if ((f.Pos & _blockSizeMask) != 0) {
-                uint bytesInBlock = _blockSize;
-                uint bufferOffset = f.Pos & _blockSizeMask;
-
-                if (f.BlockOffset != blockPos) {
-                    // f.Pos is not in the currently loaded block
-
-                } else {
-                    // read to the end of the block, and no more
-                    if (blockPos + bytesInBlock > f.Entry.FSize)
-                        bytesInBlock = f.Entry.FSize - blockPos;
-                }
-
-                uint bytesToCopy = bytesInBlock - bufferOffset;
-                if (bytesToCopy > count)
-                    bytesToCopy = count;
-
-                Buffer.BlockCopy(f.BlockBuffer, (int)bufferOffset, buffer, (int)offset, (int)bytesToCopy);
-            }
-
-            return 0;
-        }*/
-
         int BlockIndexForPath(string path)
         {
-            uint index = HashString(path, 0x000) % _header.HashTableSize;
+            uint index = HashString(path, 0x000) % header.HashTableSize;
             uint name1 = HashString(path, 0x100);
             uint name2 = HashString(path, 0x200);
             uint startIndex = index;
@@ -324,43 +334,26 @@ namespace Diablo.Net
                 HashEntry h;
                 GetHashEntry((int)index, out h);
 
-                if (h.Name1 == name1 && h.Name2 == name2 && h.BlockIndex < _header.BlockTableSize)
+                if (h.Name1 == name1 && h.Name2 == name2 && h.BlockIndex < header.BlockTableSize)
                     return (int)h.BlockIndex;
-                index = (index + 1) % _header.HashTableSize;
+                index = (index + 1) % header.HashTableSize;
             } while (index != startIndex);
             return -1;
         }
 
-        uint HashString(string filename, uint hashtype)
+        private static uint HashString(string filename, uint hashtype)
         {
             uint seed1 = 0x7FED7FED, seed2 = 0xEEEEEEEE;
             foreach (var ch in filename) {
                 var uch = Char.ToUpper(ch);
                 if (uch == '/') uch = '\\';
-                seed1 = _cryptTable[hashtype + uch] ^ (seed1 + seed2);
+                seed1 = CryptTable[hashtype + uch] ^ (seed1 + seed2);
                 seed2 = uch + seed1 + seed2 + (seed2 << 5) + 3;
             }
             return seed1; 
         }
 
-        private void GetHashEntry(int index, out HashEntry h)
-        {
-            h.Name1 = _hashTable[index * 4 + 0];
-            h.Name2 = _hashTable[index * 4 + 1];
-            h.Locale = 0;
-            h.Platform = 0;
-            h.BlockIndex = _hashTable[index * 4 + 3];
-        }
-
-        private void GetBlockEntry(int index, out BlockEntry b)
-        {
-            b.FilePos = _blockTable[index * 4 + 0];
-            b.CSize = _blockTable[index * 4 + 1];
-            b.FSize = _blockTable[index * 4 + 2];
-            b.Flags = _blockTable[index * 4 + 3];
-        }
-
-        private void Decrypt(byte[] bytes, int offset, int length, uint key)
+        private static void Decrypt(byte[] bytes, int offset, int length, uint key)
         {
             int count = length / 4;
             var data = new uint[count];
@@ -369,13 +362,13 @@ namespace Diablo.Net
             Buffer.BlockCopy(data, 0, bytes, 0, count * 4);
         }
 
-        private void Decrypt(uint[] data, int offset, int length, uint key)
+        private static void Decrypt(uint[] data, int offset, int length, uint key)
         {
             uint seed = 0xEEEEEEEE;
 
             int stop = offset + length;
             for (int i = offset; i < stop; ++i) {
-                seed += _cryptTable[0x400 + (key & 0xFF)];
+                seed += CryptTable[0x400 + (key & 0xFF)];
                 uint ch = data[i] ^ (key + seed);
 
                 key = ((~key << 0x15) + 0x11111111) | (key >> 0x0B);
@@ -384,17 +377,17 @@ namespace Diablo.Net
             }
         }
 
-        private void Decrypt(byte[] bytes, uint key)
+        private static void Decrypt(byte[] bytes, uint key)
         {
             Decrypt(bytes, 0, bytes.Length, key);
         }
 
-        private void Decrypt(uint[] data, uint key)
+        private static void Decrypt(uint[] data, uint key)
         {
             Decrypt(data, 0, data.Length, key);
         }
 
-        private uint FileKey(string path, ref BlockEntry b)
+        private static uint FileKey(string path, ref BlockEntry b)
         {
             var filename = GetFileName(path);
             uint fileKey = HashString(filename, 0x300);
@@ -403,18 +396,7 @@ namespace Diablo.Net
             return fileKey;
         }
 
-        /*private static byte[] Explode(byte[] compressedBytes)
-        {
-            using (var input = new MemoryStream(compressedBytes))
-            using (var output = new MemoryStream()) {
-                using (var zip = new GZipStream(input, CompressionMode.Decompress)) {
-                    zip.CopyTo(output);
-                }
-                return output.ToArray();
-            }
-        }*/
-
-        private void PrepareCryptTable()
+        private static void PrepareCryptTable()
         {
             uint seed = 0x00100001;
 
@@ -426,33 +408,51 @@ namespace Diablo.Net
                     seed = (seed * 125 + 3) % 0x2AAAAB;
                     uint temp2 = (seed & 0xFFFF);
 
-                    _cryptTable[index2] = (temp1 | temp2);
+                    CryptTable[index2] = (temp1 | temp2);
                 }
             }
         }
 
-        private void ReadHashTable()
-        {
-            var size = _header.HashTableSize * Marshal.SizeOf(typeof(HashEntry));
-            var buf = new byte[size];
-            _file.Seek(_header.HashTablePos, SeekOrigin.Begin);
-            _file.Read(buf, 0, (int)size);
 
-            _hashTable = new uint[size / 4];
-            Buffer.BlockCopy(buf, 0, _hashTable, 0, (int)size);
-            Decrypt(_hashTable, HashTableKey);
+        private void GetHashEntry(int index, out HashEntry h)
+        {
+            h.Name1 = hashTable[index * 4 + 0];
+            h.Name2 = hashTable[index * 4 + 1];
+            h.Locale = 0;
+            h.Platform = 0;
+            h.BlockIndex = hashTable[index * 4 + 3];
         }
 
-        private void ReadBlockTable()
+        private void GetBlockEntry(int index, out BlockEntry b)
         {
-            var size = _header.BlockTableSize * Marshal.SizeOf(typeof(BlockEntry));
-            var buf = new byte[size];
-            _file.Seek(_header.BlockTablePos, SeekOrigin.Begin);
-            _file.Read(buf, 0, (int)size);
+            b.FilePos = blockTable[index * 4 + 0];
+            b.CSize = blockTable[index * 4 + 1];
+            b.FSize = blockTable[index * 4 + 2];
+            b.Flags = blockTable[index * 4 + 3];
+        }
 
-            _blockTable = new uint[size / 4];
-            Buffer.BlockCopy(buf, 0, _blockTable, 0, (int)size);
-            Decrypt(_blockTable, BlockTableKey);
+        private void ReadHashTable(FileStream file)
+        {
+            var size = header.HashTableSize * Marshal.SizeOf(typeof(HashEntry));
+            var buf = new byte[size];
+            file.Seek(header.HashTablePos, SeekOrigin.Begin);
+            file.Read(buf, 0, (int)size);
+
+            hashTable = new uint[size / 4];
+            Buffer.BlockCopy(buf, 0, hashTable, 0, (int)size);
+            Decrypt(hashTable, HashTableKey);
+        }
+
+        private void ReadBlockTable(FileStream file)
+        {
+            var size = header.BlockTableSize * Marshal.SizeOf(typeof(BlockEntry));
+            var buf = new byte[size];
+            file.Seek(header.BlockTablePos, SeekOrigin.Begin);
+            file.Read(buf, 0, (int)size);
+
+            blockTable = new uint[size / 4];
+            Buffer.BlockCopy(buf, 0, blockTable, 0, (int)size);
+            Decrypt(blockTable, BlockTableKey);
         }
 
 
@@ -505,6 +505,72 @@ namespace Diablo.Net
             if (i < 0)
                 return path;
             return path.Substring(i + 1);
+        }
+    }
+
+
+
+    public class MPQStream : Stream
+    {
+        public override void Flush()
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void SetLength(long value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            return archive.Seek(this, offset, origin);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            return archive.Read(this, buffer, offset, count);
+        }
+
+        public override bool CanRead { get { return true; } }
+        public override bool CanSeek { get { return true; } }
+        public override bool CanWrite { get { return false; } }
+
+        public override long Length
+        {
+            get { return archive.Length(this); }
+        }
+
+        public override long Position
+        {
+            get { return archive.Position(this); }
+            set { Seek(value, SeekOrigin.Begin); }
+        }
+
+
+
+        private readonly MPQArchive archive;
+        private readonly object handle;
+
+        internal MPQStream(MPQArchive archive, object handle)
+        {
+            this.archive = archive;
+            this.handle = handle;
+        }
+
+        public MPQArchive Archive
+        {
+            get { return archive; }
+        }
+
+        public object Handle
+        {
+            get { return handle; }
         }
     }
 }
