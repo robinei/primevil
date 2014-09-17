@@ -2,7 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Linq.Expressions;
+using System.Net.Mime;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
@@ -21,6 +24,13 @@ namespace Diablo.Net
         GraphicsDeviceManager graphics;
         SpriteBatch spriteBatch;
 
+        Texture2D texture;
+        BasicEffect basicEffect;
+        VertexPositionTexture[] vertices = new VertexPositionTexture[4];
+
+        private CELFile celFile;
+        private int tileIndex;
+
         public Game1()
             : base()
         {
@@ -37,6 +47,26 @@ namespace Diablo.Net
         protected override void Initialize()
         {
             // TODO: Add your initialization logic here
+            basicEffect = new BasicEffect(graphics.GraphicsDevice) {
+                View = Matrix.CreateLookAt(new Vector3(0, 0, 300), new Vector3(0, 0, 0), Vector3.Up),
+                Projection = Matrix.CreatePerspectiveFieldOfView(
+                    (float)Math.PI / 4.0f,
+                    graphics.GraphicsDevice.Viewport.Width / (float)graphics.GraphicsDevice.Viewport.Height,
+                    0.1f,
+                    100000)
+            };
+
+            vertices[0].Position = new Vector3(0, 100, 0);
+            vertices[0].TextureCoordinate = new Vector2(0, 1);
+
+            vertices[1].Position = new Vector3(0, 0, 0);
+            vertices[1].TextureCoordinate = new Vector2(0, 0);
+
+            vertices[2].Position = new Vector3(100, 100, 0);
+            vertices[2].TextureCoordinate = new Vector2(1, 1);
+
+            vertices[3].Position = new Vector3(100, 0, 0);
+            vertices[3].TextureCoordinate = new Vector2(1, 0);
 
             base.Initialize();
         }
@@ -52,21 +82,38 @@ namespace Diablo.Net
 
             // TODO: use this.Content to load your game content here
 
+
+            /*using (var f = File.OpenRead("test.jpg")) {
+                texture = Texture2D.FromStream(GraphicsDevice, f);
+            }*/
+
             var mpq = new MPQArchive("DIABDAT.MPQ");
-            var buf = new byte[mpq.BlockSize];
+            var palData = new byte[768];
+            byte[] celData;
 
-            var f = mpq.Open("ctrlpan/golddrop.cel");
-
-            int total = 0;
-            while (true) {
-                int len = f.Read(buf, 0, buf.Length);
-                total += len;
-                if (len < buf.Length)
-                    break;
+            using (var f = mpq.Open("levels/towndata/town.pal")) {
+                f.Read(palData, 0, 768);
             }
 
-            Debug.WriteLine("Length: " + f.Length);
-            Debug.WriteLine("total: " + total);
+            using (var f = mpq.Open("levels/towndata/town.cel")) {
+                celData = new byte[f.Length];
+                var len = f.Read(celData, 0, celData.Length);
+                Debug.Assert(len == celData.Length);
+            }
+
+            celFile = new CELFile(celData, palData);
+            tileIndex = 102;
+            NextFrame();
+        }
+
+        void NextFrame()
+        {
+            var frame = celFile.GetFrame(tileIndex++);
+            Debug.WriteLine("Width: " + frame.Width);
+            Debug.WriteLine("Height: " + frame.Height);
+
+            texture = new Texture2D(GraphicsDevice, frame.Width, frame.Height, false, SurfaceFormat.Color);
+            texture.SetData(frame.Data);
         }
 
         /// <summary>
@@ -90,6 +137,11 @@ namespace Diablo.Net
 
             // TODO: Add your update logic here
 
+
+            if (Keyboard.GetState().IsKeyDown(Keys.Down)) {
+                NextFrame();
+            }
+
             base.Update(gameTime);
         }
 
@@ -102,6 +154,17 @@ namespace Diablo.Net
             GraphicsDevice.Clear(Color.CornflowerBlue);
 
             // TODO: Add your drawing code here
+            
+            
+            var rs = new RasterizerState {CullMode = CullMode.None};
+            GraphicsDevice.RasterizerState = rs;
+
+            basicEffect.TextureEnabled = true;
+            basicEffect.Texture = texture;
+            foreach (var pass in basicEffect.CurrentTechnique.Passes) {
+                pass.Apply();
+                graphics.GraphicsDevice.DrawUserPrimitives(PrimitiveType.TriangleStrip, vertices, 0, 2);
+            }
 
             base.Draw(gameTime);
         }

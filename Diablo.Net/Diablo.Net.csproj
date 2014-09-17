@@ -35,6 +35,7 @@
     <ApplicationIcon>Icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="CELFile.cs" />
     <Compile Include="PkUnzipper.cs" />
     <Compile Include="Diabdat.cs" />
     <Compile Include="Game1.cs" />
