@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
 
-namespace Primevil
+namespace Primevil.Formats
 {
     public class MPQStream : Stream
     {

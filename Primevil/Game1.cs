@@ -12,6 +12,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Storage;
 using Microsoft.Xna.Framework.GamerServices;
+using Primevil.Formats;
+
 #endregion
 
 namespace Primevil
@@ -25,8 +27,6 @@ namespace Primevil
         SpriteBatch spriteBatch;
 
         Texture2D texture;
-        BasicEffect basicEffect;
-        VertexPositionTexture[] vertices = new VertexPositionTexture[4];
 
         private CELFile celFile;
         private int tileIndex;
@@ -35,6 +35,8 @@ namespace Primevil
             : base()
         {
             graphics = new GraphicsDeviceManager(this);
+            graphics.PreferredBackBufferWidth = 1024;
+            graphics.PreferredBackBufferHeight = 1024;
             Content.RootDirectory = "Content";
         }
 
@@ -47,26 +49,6 @@ namespace Primevil
         protected override void Initialize()
         {
             // TODO: Add your initialization logic here
-            basicEffect = new BasicEffect(graphics.GraphicsDevice) {
-                View = Matrix.CreateLookAt(new Vector3(0, 0, 300), new Vector3(0, 0, 0), Vector3.Up),
-                Projection = Matrix.CreatePerspectiveFieldOfView(
-                    (float)Math.PI / 4.0f,
-                    graphics.GraphicsDevice.Viewport.Width / (float)graphics.GraphicsDevice.Viewport.Height,
-                    0.1f,
-                    100000)
-            };
-
-            vertices[0].Position = new Vector3(0, 100, 0);
-            vertices[0].TextureCoordinate = new Vector2(0, 1);
-
-            vertices[1].Position = new Vector3(0, 0, 0);
-            vertices[1].TextureCoordinate = new Vector2(0, 0);
-
-            vertices[2].Position = new Vector3(100, 100, 0);
-            vertices[2].TextureCoordinate = new Vector2(1, 1);
-
-            vertices[3].Position = new Vector3(100, 0, 0);
-            vertices[3].TextureCoordinate = new Vector2(1, 0);
 
             base.Initialize();
         }
@@ -81,11 +63,6 @@ namespace Primevil
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
             // TODO: use this.Content to load your game content here
-
-
-            /*using (var f = File.OpenRead("test.jpg")) {
-                texture = Texture2D.FromStream(GraphicsDevice, f);
-            }*/
 
             var mpq = new MPQArchive("DIABDAT.MPQ");
             var palData = new byte[768];
@@ -102,12 +79,28 @@ namespace Primevil
             }
 
             celFile = new CELFile(celData, palData);
+
+            var atlas = new TextureAtlas(1024);
+
+            for (int i = 0; i < celFile.NumFrames; ++i) {
+                var frame = celFile.GetFrame(i);
+                int id = atlas.Insert(frame.Data, frame.Width, frame.Height);
+                if (id < 0) {
+                    Debug.WriteLine("atlas is full: " + i);
+                    break;
+                }
+            }
+
+            texture = new Texture2D(GraphicsDevice, atlas.Dim, atlas.Dim, false, SurfaceFormat.Color);
+            texture.SetData(atlas.Data);
+
             tileIndex = 102;
             NextFrame();
         }
 
         void NextFrame()
         {
+            return;
             var frame = celFile.GetFrame(tileIndex++);
             Debug.WriteLine("Width: " + frame.Width);
             Debug.WriteLine("Height: " + frame.Height);
@@ -151,20 +144,13 @@ namespace Primevil
         /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(Color.CornflowerBlue);
+            GraphicsDevice.Clear(Color.Black);
 
             // TODO: Add your drawing code here
             
-            
-            var rs = new RasterizerState {CullMode = CullMode.None};
-            GraphicsDevice.RasterizerState = rs;
-
-            basicEffect.TextureEnabled = true;
-            basicEffect.Texture = texture;
-            foreach (var pass in basicEffect.CurrentTechnique.Passes) {
-                pass.Apply();
-                graphics.GraphicsDevice.DrawUserPrimitives(PrimitiveType.TriangleStrip, vertices, 0, 2);
-            }
+            spriteBatch.Begin();
+            spriteBatch.Draw(texture, new Rectangle(0, 0, 1024, 1024), Color.White);
+            spriteBatch.End();
 
             base.Draw(gameTime);
         }

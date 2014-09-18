@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace Primevil
+namespace Primevil.Formats
 {
     public class CELFile
     {
@@ -39,14 +39,19 @@ namespace Primevil
             this.isTileCel = true;
 
             // read file header
-            numFrames = ReadUInt32();
+            var r = new BinaryReader(fileData);
+            numFrames = r.ReadU32();
             frameOffsets = new uint[numFrames + 1];
             for (var i = 0; i < numFrames + 1; ++i)
-                frameOffsets[i] = ReadUInt32();
-            endOffset = ReadUInt32();
+                frameOffsets[i] = r.ReadU32();
+            endOffset = r.ReadU32();
 
             Debug.WriteLine("numFrames: " + numFrames);
-            Debug.WriteLine("X: " + PeekUInt16());
+        }
+
+        public int NumFrames
+        {
+            get { return (int)numFrames; }
         }
 
         public Frame GetFrame(int index)
@@ -299,19 +304,6 @@ namespace Primevil
                     return false;
             }
             return true;
-        }
-
-
-        private uint ReadUInt32()
-        {
-            uint val = BitConverter.ToUInt32(fileData, filePos);
-            filePos += 4;
-            return val;
-        }
-
-        private ushort PeekUInt16()
-        {
-            return BitConverter.ToUInt16(fileData, filePos);
         }
     }
 }

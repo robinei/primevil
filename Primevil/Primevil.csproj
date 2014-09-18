@@ -35,14 +35,16 @@
     <ApplicationIcon>Icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="CELFile.cs" />
-    <Compile Include="MPQStream.cs" />
-    <Compile Include="PkUnzipper.cs" />
-    <Compile Include="Diabdat.cs" />
+    <Compile Include="Formats\BinaryReader.cs" />
+    <Compile Include="Formats\CELFile.cs" />
+    <Compile Include="Formats\MPQStream.cs" />
+    <Compile Include="Formats\PkUnzipper.cs" />
+    <Compile Include="Formats\Diabdat.cs" />
     <Compile Include="Game1.cs" />
-    <Compile Include="MPQArchive.cs" />
+    <Compile Include="Formats\MPQArchive.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TextureAtlas.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="MonoGame.Framework">

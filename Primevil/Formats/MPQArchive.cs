@@ -1,42 +1,19 @@
 ﻿using System;
-using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
-using System.Linq;
-using System.Runtime.InteropServices;
 
-namespace Primevil
+namespace Primevil.Formats
 {
     public class MPQArchive
     {
-        // ReSharper disable FieldCanBeMadeReadOnly.Local
-        // ReSharper disable MemberCanBePrivate.Local
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct Header
-        {
-            public uint ID;
-            public uint HeaderSize;
-            public uint ArchiveSize;
-            public ushort FormatVersion;
-            public ushort BlockSize;
-            public uint HashTablePos;
-            public uint BlockTablePos;
-            public uint HashTableSize;
-            public uint BlockTableSize;
-        }
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
         struct HashEntry
         {
             public uint Name1;
             public uint Name2;
-            public ushort Locale;
-            public ushort Platform;
+            //public ushort Locale;
+            //public ushort Platform;
             public uint BlockIndex;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct BlockEntry
         {
             public uint FilePos;
@@ -44,11 +21,6 @@ namespace Primevil
             public uint FSize;
             public uint Flags;
         }
-
-        // ReSharper restore FieldCanBeMadeReadOnly.Local
-        // ReSharper restore MemberCanBePrivate.Local
-
-
 
         private class FileHandle : IDisposable
         {
@@ -98,9 +70,10 @@ namespace Primevil
         private static readonly uint[] CryptTable = new uint[0x500];
 
         private readonly string archivePath;
-        private Header header;
-        private uint[] hashTable;
-        private uint[] blockTable;
+        private readonly uint[] hashTable;
+        private readonly uint[] blockTable;
+        private readonly uint hashTableSize;
+        private readonly uint blockTableSize;
         
         public readonly uint BlockSize;
 
@@ -113,16 +86,34 @@ namespace Primevil
         public MPQArchive(string path)
         {
             archivePath = path;
+
             var file = new FileStream(path, FileMode.Open, FileAccess.Read);
-            ReadStruct(file, out header);
-            if (header.ID != FourCC)
+            var headerBuf = new byte[32];
+            var len = file.Read(headerBuf, 0, 32);
+            if (len != 32)
+                throw new Exception("file too small");
+            
+            // read archive header
+            var r = new BinaryReader(headerBuf);
+            var id = r.ReadU32();
+            r.Skip(8); // HeaderSize and ArchiveSize
+            var version = r.ReadU16();
+            BlockSize = (uint)(0x200 << r.ReadU16());
+            var hashTablePos = r.ReadU32();
+            var blockTablePos = r.ReadU32();
+            hashTableSize = r.ReadU32();
+            blockTableSize = r.ReadU32();
+
+            if (id != FourCC)
                 throw new Exception("bad file header");
-            if (header.FormatVersion != 0)
+            if (version != 0)
                 throw new NotImplementedException();
 
-            BlockSize = (uint)0x200 << header.BlockSize;
-            ReadHashTable(file);
-            ReadBlockTable(file);
+            file.Seek(hashTablePos, SeekOrigin.Begin);
+            hashTable = ReadHashTable(file);
+
+            file.Seek(blockTablePos, SeekOrigin.Begin);
+            blockTable = ReadBlockTable(file);
         }
 
 
@@ -281,7 +272,7 @@ namespace Primevil
 
         int BlockIndexForPath(string path)
         {
-            uint index = HashString(path, 0x000) % header.HashTableSize;
+            uint index = HashString(path, 0x000) % hashTableSize;
             uint name1 = HashString(path, 0x100);
             uint name2 = HashString(path, 0x200);
             uint startIndex = index;
@@ -290,9 +281,9 @@ namespace Primevil
                 HashEntry h;
                 GetHashEntry((int)index, out h);
 
-                if (h.Name1 == name1 && h.Name2 == name2 && h.BlockIndex < header.BlockTableSize)
+                if (h.Name1 == name1 && h.Name2 == name2 && h.BlockIndex < blockTableSize)
                     return (int)h.BlockIndex;
-                index = (index + 1) % header.HashTableSize;
+                index = (index + 1) % hashTableSize;
             } while (index != startIndex);
             return -1;
         }
@@ -374,8 +365,6 @@ namespace Primevil
         {
             h.Name1 = hashTable[index * 4 + 0];
             h.Name2 = hashTable[index * 4 + 1];
-            h.Locale = 0;
-            h.Platform = 0;
             h.BlockIndex = hashTable[index * 4 + 3];
         }
 
@@ -387,44 +376,28 @@ namespace Primevil
             b.Flags = blockTable[index * 4 + 3];
         }
 
-        private void ReadHashTable(FileStream file)
+        private uint[] ReadHashTable(FileStream file)
         {
-            var size = header.HashTableSize * Marshal.SizeOf(typeof(HashEntry));
+            var size = hashTableSize * 16;
             var buf = new byte[size];
-            file.Seek(header.HashTablePos, SeekOrigin.Begin);
             file.Read(buf, 0, (int)size);
 
-            hashTable = new uint[size / 4];
-            Buffer.BlockCopy(buf, 0, hashTable, 0, (int)size);
-            Decrypt(hashTable, HashTableKey);
+            var table = new uint[size / 4];
+            Buffer.BlockCopy(buf, 0, table, 0, (int)size);
+            Decrypt(table, HashTableKey);
+            return table;
         }
 
-        private void ReadBlockTable(FileStream file)
+        private uint[] ReadBlockTable(FileStream file)
         {
-            var size = header.BlockTableSize * Marshal.SizeOf(typeof(BlockEntry));
+            var size = blockTableSize * 16;
             var buf = new byte[size];
-            file.Seek(header.BlockTablePos, SeekOrigin.Begin);
             file.Read(buf, 0, (int)size);
 
-            blockTable = new uint[size / 4];
-            Buffer.BlockCopy(buf, 0, blockTable, 0, (int)size);
-            Decrypt(blockTable, BlockTableKey);
-        }
-
-
-        private static void ReadStruct<T>(byte[] buf, out T value) where T : struct
-        {
-            var handle = GCHandle.Alloc(buf, GCHandleType.Pinned);
-            value = (T)Marshal.PtrToStructure(handle.AddrOfPinnedObject(), typeof(T));
-            handle.Free();
-        }
-
-        private static void ReadStruct<T>(Stream stream, out T value) where T : struct
-        {
-            var size = Marshal.SizeOf(typeof(T));
-            var buf = new byte[size];
-            stream.Read(buf, 0, size);
-            ReadStruct(buf, out value);
+            var table = new uint[size / 4];
+            Buffer.BlockCopy(buf, 0, table, 0, (int)size);
+            Decrypt(table, BlockTableKey);
+            return table;
         }
 
         private static string GetFileName(string path)

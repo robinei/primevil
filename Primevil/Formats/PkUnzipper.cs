@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Primevil
+namespace Primevil.Formats
 {
     /*
      * Decode PKWare Compression Library stream.
@@ -287,8 +287,8 @@ namespace Primevil
             int symbol;         /* current symbol when stepping through length[] */
             int len;            /* current length when stepping through h->count[] */
             int left;           /* number of possible codes left of current length */
-            short[] offs = new short[MaxBits + 1];      /* offsets in symbol table for each length */
-            short[] length = new short[256];  /* code lengths */
+            var offs = new short[MaxBits + 1];      /* offsets in symbol table for each length */
+            var length = new short[256];  /* code lengths */
             int repPos = 0;
 
             /* convert compact repeat counts into symbol bit length list */
