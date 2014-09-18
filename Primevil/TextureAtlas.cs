@@ -49,10 +49,12 @@ namespace Primevil
             }
         }
 
+
         public readonly int Dim;
         public readonly byte[] Data;
-        private readonly Node root;
-        private readonly List<Node> nodes = new List<Node>();
+        private readonly List<Rectangle> rects = new List<Rectangle>();
+        private Node root;
+
 
         public TextureAtlas(int dim)
         {
@@ -63,23 +65,33 @@ namespace Primevil
             };
         }
 
+        public void Freeze()
+        {
+            // the tree can be safely GCed now
+            root = null;
+        }
+
         public int Insert(byte[] image, int width, int height)
         {
+            if (root == null)
+                return -1; // we are frozen
+
             var node = root.Insert(width, height);
             if (node == null)
                 return -1;
 
             BlitImage(image, node.Rect);
 
-            int id = nodes.Count;
-            nodes.Add(node);
-            return id;
+            int imageIndex = rects.Count;
+            rects.Add(node.Rect);
+            return imageIndex;
         }
 
-        public Rectangle GetRectangle(int nodeId)
+        public Rectangle GetRectangle(int imageIndex)
         {
-            return nodes[nodeId].Rect;
+            return rects[imageIndex];
         }
+
 
         private void BlitImage(byte[] image, Rectangle rect)
         {

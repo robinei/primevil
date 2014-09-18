@@ -65,22 +65,30 @@ namespace Primevil.Formats
             filePos = frameOffset;
             decoded.Clear();
 
-            Debug.WriteLine("--------");
-            Debug.WriteLine("size: " + frameSize);
+            //Debug.WriteLine("--------");
+            //Debug.WriteLine("size: " + frameSize);
 
             if (frameSize == 1024) {
-                Debug.WriteLine("1024");
+                //Debug.WriteLine("1024");
+                //return null;
                 return DecodeRaw32();
-            } else if (HasSignature(lt1)) {
-                Debug.WriteLine("lt1");
-                return DecodeGtLt(true);
-            } else if (HasSignature(gt1)) {
-                Debug.WriteLine("gt1");
-                return DecodeGtLt(false);
-            } else {
-                Debug.WriteLine("ELSE");
-                return DecodeNormal();
             }
+            
+            if (HasSignature(lt1)) {
+                //Debug.WriteLine("lt1");
+                //return null;
+                return DecodeGtLt(true);
+            }
+            
+            if (HasSignature(gt1)) {
+                //Debug.WriteLine("gt1");
+                //return null;
+                return DecodeGtLt(false);
+            }
+
+            //return null;
+            //Debug.WriteLine("ELSE");
+            return DecodeNormal();
         }
 
         private Frame DecodeNormal()
@@ -89,27 +97,43 @@ namespace Primevil.Formats
             bool fromHeader = false;
 
             // The frame has a header which we can use to determine width
-            if (!isTileCel && fileData[frameOffset] == 10) {
+            /*if (!isTileCel && fileData[frameOffset] == 10) {
                 fromHeader = true;
                 offset = (fileData[frameOffset + 3] << 8 | fileData[frameOffset + 2]);
                 filePos += 10; // Skip the header
-            }
+            }*/
 
-            int stop = frameOffset + frameSize;
-            for (; filePos < stop; ++filePos) {
-                if (fileData[filePos] <= 127) {
-                    // Just push the number of pixels specified by the command
-                    for (int j = 1; j < fileData[filePos] + 1 && filePos + j < stop; ++j)
-                        PutPaletteColor(fileData[filePos + j]);
-                    filePos += fileData[filePos];
+            for (int i = 0; i < frameSize; ++i) {
+                int val = fileData[frameOffset + i];
+                if (val <= 127) {
+                    int off = frameOffset + i + 1;
+                    for (int j = 0; j < val; ++j)
+                        PutPaletteColor(fileData[off + j]);
+                    i += val;
                 }
                 else {
-                    FillTransparent(256 - fileData[filePos]);
+                    FillTransparent(256 - val);
                 }
             }
 
-            int width = NormalWidth(fromHeader, offset);
-            return MakeFrame(width);
+            //int width = NormalWidth(fromHeader, offset);
+            //return MakeFrame(width);
+            //Debug.WriteLine("remainder: " + (frameSize % 32));
+            return MakeFrame(32);
+            int diff = 0;
+            for (int i = 0; i < 1024; ++i) {
+                int w = 32;
+                if ((i % 2) == 0)
+                    w += diff;
+                else
+                    w -= diff++;
+                if (w > 0 && (frameSize % w) == 0)
+                    return MakeFrame(w);
+            }
+
+            Debug.WriteLine("frameSize: " + frameSize);
+
+            throw new Exception("unable to find width");
         }
 
         int NormalWidth(bool fromHeader, int offset)
