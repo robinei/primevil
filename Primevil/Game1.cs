@@ -19,7 +19,6 @@ namespace Primevil
         private TILFile tilFile;
         private DUNFile dunFile;
         private int tileIndex;
-        private int scale = 1;
 
         public Game1()
         {
@@ -86,11 +85,6 @@ namespace Primevil
             Debug.WriteLine("NumBlocks: " + tilFile.NumBlocks);
 
             atlas = new TextureAtlas(2048);
-            scale = 2;
-
-            var temp1 = new uint[256 * 256];
-            var temp2 = new uint[256 * 256];
-            var temp3 = new byte[256 * 256 * 4];
 
             for (int i = 0; i < celFile.NumFrames; ++i) {
                 CELFile.Frame frame;
@@ -98,20 +92,11 @@ namespace Primevil
                     frame = celFile.GetFrame(i);
                     if (frame == null)
                         continue;
-                } catch (Exception) {
+                } catch (Exception e) {
                     Debug.WriteLine("error at: " + i);
                     break;
                 }
-
-                if (scale == 2) {
-                    Buffer.BlockCopy(frame.Data, 0, temp1, 0, frame.Data.Length);
-                    Scale2xSAI.Super2xSaI(temp1, temp2, frame.Width, frame.Height);
-                    Buffer.BlockCopy(temp2, 0, temp3, 0, frame.Data.Length * 4);
-                } else {
-                    temp3 = frame.Data;
-                }
-
-                int id = atlas.Insert(temp3, frame.Width * scale, frame.Height * scale);
+                int id = atlas.Insert(frame.Data, frame.Width, frame.Height);
                 if (id < 0) {
                     Debug.WriteLine("atlas is full: " + i);
                     break;
@@ -151,7 +136,7 @@ namespace Primevil
                     if (celIndex < 0)
                         continue;
 
-                    spriteBatch.Draw(texture, new Vector2(xPos + x * 32 * scale, yPos + y * 32 * scale),
+                    spriteBatch.Draw(texture, new Vector2(xPos + x * 32, yPos + y * 32),
                         sourceRectangle: atlas.GetRectangle(celIndex),
                         effect: SpriteEffects.FlipVertically);
                 }
@@ -161,10 +146,10 @@ namespace Primevil
         private void DrawTileBlock(int blockIndex, int xPos, int yPos)
         {
             var b = tilFile.GetBlock(blockIndex);
-            DrawMinPillar(b.Top, xPos + 32 * scale, yPos);
-            DrawMinPillar(b.Left, xPos, yPos + 16 * scale);
-            DrawMinPillar(b.Right, xPos + 64 * scale, yPos + 16 * scale);
-            DrawMinPillar(b.Bottom, xPos + 32 * scale, yPos + 32 * scale);
+            DrawMinPillar(b.Top, xPos + 32, yPos);
+            DrawMinPillar(b.Left, xPos, yPos + 16);
+            DrawMinPillar(b.Right, xPos + 64, yPos + 16);
+            DrawMinPillar(b.Bottom, xPos + 32, yPos + 32);
         }
 
 
