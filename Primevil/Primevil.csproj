@@ -37,9 +37,12 @@
   <ItemGroup>
     <Compile Include="Formats\BinaryReader.cs" />
     <Compile Include="Formats\CELFile.cs" />
+    <Compile Include="Formats\DUNFile.cs" />
+    <Compile Include="Formats\MINFile.cs" />
     <Compile Include="Formats\MPQStream.cs" />
     <Compile Include="Formats\PkUnzipper.cs" />
     <Compile Include="Formats\Diabdat.cs" />
+    <Compile Include="Formats\TILFile.cs" />
     <Compile Include="Game1.cs" />
     <Compile Include="Formats\MPQArchive.cs" />
     <Compile Include="Program.cs" />

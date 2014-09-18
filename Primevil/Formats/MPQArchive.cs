@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 
 namespace Primevil.Formats
@@ -130,11 +131,6 @@ namespace Primevil.Formats
             };
             GetBlockEntry(index, out f.Entry);
 
-            if ((f.Entry.Flags & FileDeleteMarker) != 0)
-                throw new FileNotFoundException();
-            if ((f.Entry.Flags & FileExists) == 0)
-                throw new FileNotFoundException();
-
             if ((f.Entry.Flags & FileCompress) != 0)
                 throw new NotImplementedException();
             if ((f.Entry.Flags & FileFixKey) != 0)
@@ -145,8 +141,15 @@ namespace Primevil.Formats
                 throw new NotImplementedException();
             if ((f.Entry.Flags & FileSectorCrc) != 0)
                 throw new NotImplementedException();
+            if ((f.Entry.Flags & ~AllFlagsMask) != 0)
+                throw new Exception("unknown flags present");
             if (f.Entry.FSize == 0)
                 throw new Exception("file size is zero");
+
+            if ((f.Entry.Flags & FileDeleteMarker) != 0)
+                throw new FileNotFoundException();
+            if ((f.Entry.Flags & FileExists) == 0)
+                throw new FileNotFoundException();
 
             if ((f.Entry.Flags & FileEncrypted) != 0)
                 f.DecryptionKey = FileKey(f.Path, ref f.Entry);
@@ -157,6 +160,13 @@ namespace Primevil.Formats
             f.BlockBuffer = new byte[BlockSize];
             f.BlockSize = 0;
             LoadOffsetsTable(f);
+
+            Debug.WriteLine("\nfile: " + path);
+            Debug.WriteLine("FileImplode: " + ((f.Entry.Flags & FileImplode) != 0));
+            Debug.WriteLine("FileEncrypted: " + ((f.Entry.Flags & FileEncrypted) != 0));
+            Debug.WriteLine("BlockCount: " + f.BlockCount);
+            Debug.WriteLine("FSize: " + f.Entry.FSize);
+            Debug.WriteLine("CSize: " + f.Entry.CSize);
 
             return new MPQStream(this, f);
         }
@@ -216,10 +226,20 @@ namespace Primevil.Formats
                     f.Stream.Seek(pos, SeekOrigin.Begin);
                     f.Stream.Read(buf, 0, (int)size);
 
-                    Decrypt(buf, f.DecryptionKey + blockIndex);
+                    if ((f.Entry.Flags & FileEncrypted) != 0)
+                        Decrypt(buf, f.DecryptionKey + blockIndex);
 
-                    var decoder = new PkUnzipper();
-                    f.BlockSize = decoder.Decompress(buf, 0, buf.Length, f.BlockBuffer);
+                    if (f.Entry.CSize < f.Entry.FSize) {
+                        if ((f.Entry.Flags & FileImplode) != 0) {
+                            var decoder = new PkUnzipper();
+                            f.BlockSize = decoder.Decompress(buf, 0, buf.Length, f.BlockBuffer);
+                        } else {
+                            throw new Exception("corrupt file");
+                        }
+                    } else {
+                        Buffer.BlockCopy(buf, 0, f.BlockBuffer, 0, (int)size);
+                        f.BlockSize = (uint)buf.Length;
+                    }
                     f.BlockIndex = blockIndex;
                 }
 

@@ -92,6 +92,11 @@ namespace Primevil
             return rects[imageIndex];
         }
 
+        public int Count
+        {
+            get { return rects.Count; }
+        }
+
 
         private void BlitImage(byte[] image, Rectangle rect)
         {
