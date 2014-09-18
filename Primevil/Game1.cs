@@ -14,7 +14,7 @@ using Microsoft.Xna.Framework.Storage;
 using Microsoft.Xna.Framework.GamerServices;
 #endregion
 
-namespace Diablo.Net
+namespace Primevil
 {
     /// <summary>
     /// This is the main type for your game

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Diablo.Net
+namespace Primevil
 {
     /*
      * Decode PKWare Compression Library stream.

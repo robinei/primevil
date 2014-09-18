@@ -8,8 +8,8 @@
     <ProjectGuid>{6DEBDF3E-7974-4659-85DF-70EAD5016D7C}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Diablo.Net</RootNamespace>
-    <AssemblyName>Diablo.Net</AssemblyName>
+    <RootNamespace>Primevil</RootNamespace>
+    <AssemblyName>Primevil</AssemblyName>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
@@ -36,6 +36,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="CELFile.cs" />
+    <Compile Include="MPQStream.cs" />
     <Compile Include="PkUnzipper.cs" />
     <Compile Include="Diabdat.cs" />
     <Compile Include="Game1.cs" />

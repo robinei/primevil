@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace Diablo.Net
+namespace Primevil
 {
     public class CELFile
     {

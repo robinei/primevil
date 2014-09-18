@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 #endregion
 
-namespace Diablo.Net
+namespace Primevil
 {
 #if WINDOWS || LINUX
     /// <summary>
