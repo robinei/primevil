@@ -23,8 +23,8 @@ namespace Primevil
         public Game1()
         {
             graphics = new GraphicsDeviceManager(this);
-            graphics.PreferredBackBufferWidth = 2560;
-            graphics.PreferredBackBufferHeight = 1440;
+            graphics.PreferredBackBufferWidth = 1366;
+            graphics.PreferredBackBufferHeight = 768;
             Content.RootDirectory = "Content";
         }
 
@@ -120,9 +120,13 @@ namespace Primevil
                 Exit();
 
             if (Keyboard.GetState().IsKeyDown(Keys.Left))
-                tileIndex = (tileIndex - 1) % tilFile.NumBlocks;
+                tileIndex = tileIndex - 1;
             if (Keyboard.GetState().IsKeyDown(Keys.Right))
-                tileIndex = (tileIndex + 1) % tilFile.NumBlocks;
+                tileIndex = tileIndex + 1;
+            if (tileIndex < 0)
+                tileIndex += tilFile.NumBlocks;
+            else if (tileIndex >= tilFile.NumBlocks)
+                tileIndex -= tilFile.NumBlocks;
 
             base.Update(gameTime);
         }
@@ -158,7 +162,7 @@ namespace Primevil
             GraphicsDevice.Clear(Color.Black);
             
             spriteBatch.Begin();
-            DrawTileBlock(tileIndex, 500, 500);
+            DrawTileBlock(tileIndex, 100, 100);
             spriteBatch.End();
 
             base.Draw(gameTime);

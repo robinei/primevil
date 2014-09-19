@@ -37,8 +37,11 @@ namespace Primevil.Formats
             public uint BlockCount;
             public uint[] BlockOffsets;
 
-            public byte[] BlockBuffer;
             public uint BlockSize;
+            public byte[] BlockBuffer;
+
+            public byte[] TempBuffer;
+            public uint[] CryptBuffer;
 
             public void Dispose()
             {
@@ -111,10 +114,10 @@ namespace Primevil.Formats
                 throw new NotImplementedException();
 
             file.Seek(hashTablePos, SeekOrigin.Begin);
-            hashTable = ReadHashTable(file);
+            hashTable = ReadHashTable(file, hashTableSize);
 
             file.Seek(blockTablePos, SeekOrigin.Begin);
-            blockTable = ReadBlockTable(file);
+            blockTable = ReadBlockTable(file, blockTableSize);
         }
 
 
@@ -157,16 +160,11 @@ namespace Primevil.Formats
             f.Pos = 0;
             f.BlockIndex = 0xffffffff; // initially invalid
             f.BlockCount = 1 + (f.Entry.FSize - 1) / BlockSize;
-            f.BlockBuffer = new byte[BlockSize];
             f.BlockSize = 0;
+            f.BlockBuffer = new byte[BlockSize];
+            f.TempBuffer = new byte[BlockSize];
+            f.CryptBuffer = new uint[BlockSize / 4];
             LoadOffsetsTable(f);
-
-            Debug.WriteLine("\nfile: " + path);
-            Debug.WriteLine("FileImplode: " + ((f.Entry.Flags & FileImplode) != 0));
-            Debug.WriteLine("FileEncrypted: " + ((f.Entry.Flags & FileEncrypted) != 0));
-            Debug.WriteLine("BlockCount: " + f.BlockCount);
-            Debug.WriteLine("FSize: " + f.Entry.FSize);
-            Debug.WriteLine("CSize: " + f.Entry.CSize);
 
             return new MPQStream(this, f);
         }
@@ -222,23 +220,22 @@ namespace Primevil.Formats
                     var pos = f.Entry.FilePos + f.BlockOffsets[blockIndex];
                     uint size = f.BlockOffsets[blockIndex + 1] - f.BlockOffsets[blockIndex];
 
-                    var buf = new byte[size];
                     f.Stream.Seek(pos, SeekOrigin.Begin);
-                    f.Stream.Read(buf, 0, (int)size);
+                    f.Stream.Read(f.TempBuffer, 0, (int)size);
 
                     if ((f.Entry.Flags & FileEncrypted) != 0)
-                        Decrypt(buf, f.DecryptionKey + blockIndex);
+                        Decrypt(f.TempBuffer, 0, (int)size, f.DecryptionKey + blockIndex, f.CryptBuffer);
 
                     if (f.Entry.CSize < f.Entry.FSize) {
                         if ((f.Entry.Flags & FileImplode) != 0) {
-                            var decoder = new PkUnzipper();
-                            f.BlockSize = decoder.Decompress(buf, 0, buf.Length, f.BlockBuffer);
+                            var unzip = new PkUnzipper();
+                            f.BlockSize = unzip.Decompress(f.TempBuffer, 0, (int)size, f.BlockBuffer);
                         } else {
                             throw new Exception("corrupt file");
                         }
                     } else {
-                        Buffer.BlockCopy(buf, 0, f.BlockBuffer, 0, (int)size);
-                        f.BlockSize = (uint)buf.Length;
+                        Buffer.BlockCopy(f.TempBuffer, 0, f.BlockBuffer, 0, (int)size);
+                        f.BlockSize = size;
                     }
                     f.BlockIndex = blockIndex;
                 }
@@ -279,7 +276,7 @@ namespace Primevil.Formats
 
             // decrypt table
             if ((f.Entry.Flags & FileEncrypted) != 0)
-                Decrypt(f.BlockOffsets, f.DecryptionKey - 1);
+                Decrypt(f.BlockOffsets, 0, (int)offsetsCount, f.DecryptionKey - 1);
 
             // verify table
             for (int i = 0; i < f.BlockCount; ++i) {
@@ -320,13 +317,12 @@ namespace Primevil.Formats
             return seed1; 
         }
 
-        private static void Decrypt(byte[] bytes, int offset, int length, uint key)
+        private static void Decrypt(byte[] bytes, int offset, int length, uint key, uint[] temp)
         {
             int count = length / 4;
-            var data = new uint[count];
-            Buffer.BlockCopy(bytes, offset, data, 0, count * 4);
-            Decrypt(data, key);
-            Buffer.BlockCopy(data, 0, bytes, 0, count * 4);
+            Buffer.BlockCopy(bytes, offset, temp, 0, count * 4);
+            Decrypt(temp, 0, count, key);
+            Buffer.BlockCopy(temp, 0, bytes, 0, count * 4);
         }
 
         private static void Decrypt(uint[] data, int offset, int length, uint key)
@@ -342,16 +338,6 @@ namespace Primevil.Formats
                 seed = ch + seed + (seed << 5) + 3;
                 data[i] = ch;
             }
-        }
-
-        private static void Decrypt(byte[] bytes, uint key)
-        {
-            Decrypt(bytes, 0, bytes.Length, key);
-        }
-
-        private static void Decrypt(uint[] data, uint key)
-        {
-            Decrypt(data, 0, data.Length, key);
         }
 
         private static uint FileKey(string path, ref BlockEntry b)
@@ -396,27 +382,27 @@ namespace Primevil.Formats
             b.Flags = blockTable[index * 4 + 3];
         }
 
-        private uint[] ReadHashTable(FileStream file)
+        private static uint[] ReadHashTable(FileStream file, uint tableSize)
         {
-            var size = hashTableSize * 16;
+            var size = tableSize * 16;
             var buf = new byte[size];
             file.Read(buf, 0, (int)size);
 
             var table = new uint[size / 4];
             Buffer.BlockCopy(buf, 0, table, 0, (int)size);
-            Decrypt(table, HashTableKey);
+            Decrypt(table, 0, (int)size / 4, HashTableKey);
             return table;
         }
 
-        private uint[] ReadBlockTable(FileStream file)
+        private static uint[] ReadBlockTable(FileStream file, uint tableSize)
         {
-            var size = blockTableSize * 16;
+            var size = tableSize * 16;
             var buf = new byte[size];
             file.Read(buf, 0, (int)size);
 
             var table = new uint[size / 4];
             Buffer.BlockCopy(buf, 0, table, 0, (int)size);
-            Decrypt(table, BlockTableKey);
+            Decrypt(table, 0, (int)size / 4, BlockTableKey);
             return table;
         }
 
