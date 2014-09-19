@@ -5,11 +5,14 @@ namespace Primevil.Formats
     class MINFile
     {
         private readonly int pillarSize;
-        private readonly byte[] data;
+        private readonly short[] indexes;
 
-        public MINFile(byte[] data, string path)
+        public MINFile(string path, byte[] data, int offset = 0, int size = 0)
         {
-            this.data = data;
+            if (size == 0)
+                size = data.Length;
+            indexes = new short[size / 2];
+            Buffer.BlockCopy(data, offset, indexes, 0, size);
 
             if (path.EndsWith("town.min") || path.EndsWith("l4.min"))
                 pillarSize = 16;
@@ -24,14 +27,13 @@ namespace Primevil.Formats
 
         public int NumPillars
         {
-            get { return data.Length / (pillarSize * 2); }
+            get { return indexes.Length / pillarSize; }
         }
 
         public int GetCelIndex(int minIndex, int x, int y) // x is [0, 1], y is [0, 5 or 8]
         {
-            int i = y * 2 + x;
-            int offset = minIndex * pillarSize * 2 + i * 2;
-            int val = BitConverter.ToInt16(data, offset);
+            int offset = minIndex * pillarSize + y * 2 + x;
+            int val = indexes[offset];
             return (val & 0x0FFF) - 1;
         }
     }

@@ -4,7 +4,7 @@ namespace Primevil.Formats
 {
     class TILFile
     {
-        private readonly byte[] data;
+        private readonly short[] pillars;
 
         public struct Block
         {
@@ -14,25 +14,28 @@ namespace Primevil.Formats
             public short Bottom;
         }
 
-        public TILFile(byte[] data)
+        public TILFile(byte[] data, int offset = 0, int size = 0)
         {
-            this.data = data;
+            if (size == 0)
+                size = data.Length;
+            pillars = new short[size / 2];
+            Buffer.BlockCopy(data, offset, pillars, 0, size);
         }
 
         public Block GetBlock(int index)
         {
-            int offset = index * 8;
+            int offset = index * 4;
             Block b;
-            b.Top = BitConverter.ToInt16(data, offset + 0);
-            b.Right = BitConverter.ToInt16(data, offset + 2);
-            b.Left = BitConverter.ToInt16(data, offset + 4);
-            b.Bottom = BitConverter.ToInt16(data, offset + 6);
+            b.Top = pillars[offset + 0];
+            b.Left = pillars[offset + 2];
+            b.Right = pillars[offset + 1];
+            b.Bottom = pillars[offset + 3];
             return b;
         }
 
         public int NumBlocks
         {
-            get { return data.Length / 8; }
+            get { return pillars.Length / 4; }
         }
     }
 }

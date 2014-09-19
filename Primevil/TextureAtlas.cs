@@ -71,7 +71,7 @@ namespace Primevil
             root = null;
         }
 
-        public int Insert(byte[] image, int width, int height)
+        public int Insert(byte[] image, int width, int height, bool flipVertical = false)
         {
             if (root == null)
                 return -1; // we are frozen
@@ -80,7 +80,7 @@ namespace Primevil
             if (node == null)
                 return -1;
 
-            BlitImage(image, node.Rect);
+            BlitImage(image, node.Rect, flipVertical);
 
             int imageIndex = rects.Count;
             rects.Add(node.Rect);
@@ -98,13 +98,13 @@ namespace Primevil
         }
 
 
-        private void BlitImage(byte[] image, Rectangle rect)
+        private void BlitImage(byte[] image, Rectangle rect, bool flipVertical)
         {
             int srcPitch = rect.Width * 4;
             int dstPitch = Dim * 4;
 
             for (int y = 0; y < rect.Height; ++y) {
-                int srcOffset = y * srcPitch;
+                int srcOffset = (flipVertical ? rect.Height - y - 1 : y) * srcPitch;
                 int dstOffset = (rect.Y + y) * dstPitch + rect.X * 4;
 
                 Buffer.BlockCopy(image, srcOffset, Data, dstOffset, srcPitch);

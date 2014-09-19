@@ -1,14 +1,17 @@
-﻿using System.Security.Policy;
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Primevil.Formats;
 using System;
 using System.Diagnostics;
+using System.Linq;
+using System.Windows.Forms;
+using ButtonState = Microsoft.Xna.Framework.Input.ButtonState;
+using Keys = Microsoft.Xna.Framework.Input.Keys;
 
 namespace Primevil
 {
-    public class Game1 : Game
+    public class Game : Microsoft.Xna.Framework.Game
     {
         private GraphicsDeviceManager graphics;
         private SpriteBatch spriteBatch;
@@ -20,11 +23,18 @@ namespace Primevil
         private DUNFile dunFile;
         private int tileIndex;
 
-        public Game1()
+        public Game()
         {
             graphics = new GraphicsDeviceManager(this);
-            graphics.PreferredBackBufferWidth = 1366;
-            graphics.PreferredBackBufferHeight = 768;
+            //graphics.PreferredBackBufferWidth = 1366;
+            //graphics.PreferredBackBufferHeight = 768;
+            
+            var screen = Screen.AllScreens.First(e => e.Primary);
+            Window.IsBorderless = true;
+            Window.Position = new Point(screen.Bounds.X, screen.Bounds.Y);
+            graphics.PreferredBackBufferWidth = screen.Bounds.Width;
+            graphics.PreferredBackBufferHeight = screen.Bounds.Height;
+
             Content.RootDirectory = "Content";
         }
 
@@ -77,14 +87,31 @@ namespace Primevil
             }
 
             var celFile = new CELFile(celData, palData);
-            minFile = new MINFile(minData, "town.min");
+            minFile = new MINFile("town.min", minData);
             tilFile = new TILFile(tilData);
             dunFile = new DUNFile(dunData);
             Debug.WriteLine("PillarHeight: " + minFile.PillarHeight);
             Debug.WriteLine("NumPillars: " + minFile.NumPillars);
             Debug.WriteLine("NumBlocks: " + tilFile.NumBlocks);
+            Debug.WriteLine("Width: " + dunFile.Width);
+            Debug.WriteLine("Height: " + dunFile.Height);
 
             atlas = new TextureAtlas(2048);
+
+
+            /*var temp = new byte[32 * 32 * 4];
+            for (int i = 0; i < 32; ++i) {
+                temp[i * 32 * 4 + i * 4 + 0] = 255;
+                temp[i * 32 * 4 + i * 4 + 1] = 255;
+                temp[i * 32 * 4 + i * 4 + 2] = 255;
+                temp[i * 32 * 4 + i * 4 + 3] = 255;
+
+                temp[10 * 32 * 4 + i * 4 + 0] = 128;
+                temp[10 * 32 * 4 + i * 4 + 1] = 128;
+                temp[10 * 32 * 4 + i * 4 + 2] = 128;
+                temp[10 * 32 * 4 + i * 4 + 3] = 255;
+            }
+            atlas.Insert(temp, 32, 32);*/
 
             for (int i = 0; i < celFile.NumFrames; ++i) {
                 CELFile.Frame frame;
@@ -96,7 +123,7 @@ namespace Primevil
                     Debug.WriteLine("error at: " + i);
                     break;
                 }
-                int id = atlas.Insert(frame.Data, frame.Width, frame.Height);
+                int id = atlas.Insert(frame.Data, frame.Width, frame.Height, true);
                 if (id < 0) {
                     Debug.WriteLine("atlas is full: " + i);
                     break;
@@ -106,6 +133,7 @@ namespace Primevil
             atlas.Freeze();
             texture = new Texture2D(GraphicsDevice, atlas.Dim, atlas.Dim, false, SurfaceFormat.Color);
             texture.SetData(atlas.Data);
+            tileIndex = 70;
         }
 
 
@@ -141,8 +169,7 @@ namespace Primevil
                         continue;
 
                     spriteBatch.Draw(texture, new Vector2(xPos + x * 32, yPos + y * 32),
-                        sourceRectangle: atlas.GetRectangle(celIndex),
-                        effect: SpriteEffects.FlipVertically);
+                        sourceRectangle: atlas.GetRectangle(celIndex));//, effect: SpriteEffects.FlipHorizontally);
                 }
             }
         }
@@ -156,13 +183,34 @@ namespace Primevil
             DrawMinPillar(b.Bottom, xPos + 32, yPos + 32);
         }
 
+        private void DrawDunFile()
+        {
+            const int tileWidth = 128;
+            const int tileHeight = 64;
+
+            for (int j = 0; j < dunFile.Height; ++j) {
+                for (int i = 0; i < dunFile.Width; ++i) {
+                    int x = (i * tileWidth / 2) - (j * tileWidth / 2);
+                    int y = (i * tileHeight / 2) + (j * tileHeight / 2);
+
+                    int blockIndex = dunFile.GetTileIndex(i, j) - 1;
+                    if (blockIndex < 0)
+                        continue;
+
+                    DrawTileBlock(blockIndex, x + 2560 / 2, y);
+                }
+            }
+        }
+
 
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(Color.Black);
-            
+
             spriteBatch.Begin();
-            DrawTileBlock(tileIndex, 100, 100);
+            DrawDunFile();
+            //DrawTileBlock(tileIndex, 200, 200);
+            //spriteBatch.Draw(texture, new Rectangle(0, 0, 1440, 1440), Color.White);
             spriteBatch.End();
 
             base.Draw(gameTime);
