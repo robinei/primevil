@@ -7,7 +7,6 @@ namespace Primevil.Formats
     public class CELFile
     {
         private readonly byte[] fileData;
-        private readonly byte[] palette;
         //private readonly bool isCL2;
         //private readonly bool isTileCel;
 
@@ -17,6 +16,7 @@ namespace Primevil.Formats
         //private readonly uint endOffset;
 
         // decoding state
+        private byte[] palette;
         private int frameNum;
         private int frameOffset;
         private int frameSize;
@@ -31,10 +31,9 @@ namespace Primevil.Formats
         }
 
 
-        public CELFile(byte[] fileData, byte[] palette, bool isCL2 = false)
+        public CELFile(byte[] fileData, bool isCL2 = false)
         {
             this.fileData = fileData;
-            this.palette = palette;
             //this.isCL2 = isCL2;
             //this.isTileCel = true;
 
@@ -49,16 +48,27 @@ namespace Primevil.Formats
             Debug.WriteLine("numFrames: " + numFrames);
         }
 
+        public static CELFile Load(MPQArchive mpq, string path)
+        {
+            using (var f = mpq.Open(path)) {
+                var data = new byte[f.Length];
+                var len = f.Read(data, 0, (int)f.Length);
+                Debug.Assert(len == f.Length);
+                return new CELFile(data);
+            }
+        }
+
         public int NumFrames
         {
             get { return (int)numFrames; }
         }
 
-        public Frame GetFrame(int index)
+        public Frame GetFrame(int index, byte[] palette)
         {
             if (index < 0 || index >= numFrames)
                 throw new ArgumentException();
 
+            this.palette = palette;
             frameNum = index;
             frameOffset = (int)frameOffsets[index];
             frameSize = (int)frameOffsets[index + 1] - frameOffset;

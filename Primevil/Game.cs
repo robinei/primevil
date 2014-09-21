@@ -19,12 +19,13 @@ namespace Primevil
         private Texture2D texture;
         private TextureAtlas atlas;
         private MINFile minFile;
-        private TILFile tilFile;
-        private DUNFile dunFile;
-        private int tileIndex;
+        private Map map;
 
         private readonly int screenWidth;
         private readonly int screenHeight;
+
+        private double mapX = 0;
+        private double mapY = 0;
 
         public Game()
         {
@@ -53,73 +54,42 @@ namespace Primevil
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
             var mpq = new MPQArchive("DIABDAT.MPQ");
-            var palData = new byte[768];
-            byte[] celData;
-            byte[] minData;
-            byte[] tilData;
-            byte[] dunData;
+            var palette = new byte[768];
 
             using (var f = mpq.Open("levels/towndata/town.pal")) {
-                var len = f.Read(palData, 0, 768);
-                Debug.Assert(len == palData.Length);
+                var len = f.Read(palette, 0, 768);
+                Debug.Assert(len == palette.Length);
             }
 
-            using (var f = mpq.Open("levels/towndata/town.cel")) {
-                celData = new byte[f.Length];
-                var len = f.Read(celData, 0, celData.Length);
-                Debug.Assert(len == celData.Length);
-                Debug.WriteLine("celData.Length: " + celData.Length);
-            }
+            var celFile = CELFile.Load(mpq, "levels/towndata/town.cel");
+            minFile = MINFile.Load(mpq, "levels/towndata/town.min");
 
-            using (var f = mpq.Open("levels/towndata/town.min")) {
-                minData = new byte[f.Length];
-                var len = f.Read(minData, 0, minData.Length);
-                Debug.Assert(len == minData.Length);
+            var tilFile = TILFile.Load(mpq, "levels/towndata/town.til");
+            var dunNames = new string[] {
+                "levels/towndata/sector1s.dun",
+                "levels/towndata/sector2s.dun",
+                "levels/towndata/sector3s.dun",
+                "levels/towndata/sector4s.dun"
+            };
+            var sectors = new SectorTemplate[4];
+            for (int i = 0; i < dunNames.Length; ++i) {
+                var dunFile = DUNFile.Load(mpq, dunNames[i]);
+                sectors[i] = new SectorTemplate(dunFile, tilFile);
             }
-
-            using (var f = mpq.Open("levels/towndata/town.til")) {
-                tilData = new byte[f.Length];
-                var len = f.Read(tilData, 0, tilData.Length);
-                Debug.Assert(len == tilData.Length);
-            }
-
-            using (var f = mpq.Open("levels/towndata/sector1s.dun")) {
-                dunData = new byte[f.Length];
-                var len = f.Read(dunData, 0, dunData.Length);
-                Debug.Assert(len == dunData.Length);
-            }
-
-            var celFile = new CELFile(celData, palData);
-            minFile = new MINFile("town.min", minData);
-            tilFile = new TILFile(tilData);
-            dunFile = new DUNFile(dunData);
-            Debug.WriteLine("PillarHeight: " + minFile.PillarHeight);
-            Debug.WriteLine("NumPillars: " + minFile.NumPillars);
-            Debug.WriteLine("NumBlocks: " + tilFile.NumBlocks);
-            Debug.WriteLine("Width: " + dunFile.Width);
-            Debug.WriteLine("Height: " + dunFile.Height);
+            int mapWidth = sectors[0].Width + sectors[3].Width;
+            int mapHeight = sectors[0].Height + sectors[3].Height;
+            map = new Map(mapWidth, mapHeight);
+            map.PlaceSector(sectors[3], 0, 0);
+            map.PlaceSector(sectors[2], 0, sectors[3].Height);
+            map.PlaceSector(sectors[1], sectors[3].Width, 0);
+            map.PlaceSector(sectors[0], sectors[3].Width, sectors[3].Height);
 
             atlas = new TextureAtlas(2048);
-
-
-            /*var temp = new byte[32 * 32 * 4];
-            for (int i = 0; i < 32; ++i) {
-                temp[i * 32 * 4 + i * 4 + 0] = 255;
-                temp[i * 32 * 4 + i * 4 + 1] = 255;
-                temp[i * 32 * 4 + i * 4 + 2] = 255;
-                temp[i * 32 * 4 + i * 4 + 3] = 255;
-
-                temp[10 * 32 * 4 + i * 4 + 0] = 128;
-                temp[10 * 32 * 4 + i * 4 + 1] = 128;
-                temp[10 * 32 * 4 + i * 4 + 2] = 128;
-                temp[10 * 32 * 4 + i * 4 + 3] = 255;
-            }
-            atlas.Insert(temp, 32, 32);*/
 
             for (int i = 0; i < celFile.NumFrames; ++i) {
                 CELFile.Frame frame;
                 try {
-                    frame = celFile.GetFrame(i);
+                    frame = celFile.GetFrame(i, palette);
                     if (frame == null)
                         continue;
                 } catch (Exception) {
@@ -135,7 +105,6 @@ namespace Primevil
 
             texture = new Texture2D(GraphicsDevice, atlas.Dim, atlas.Dim, false, SurfaceFormat.Color);
             texture.SetData(atlas.Data);
-            tileIndex = 70;
         }
 
 
@@ -146,17 +115,20 @@ namespace Primevil
 
         protected override void Update(GameTime gameTime)
         {
+            var dt = gameTime.ElapsedGameTime.TotalSeconds;
+
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
+            double speed = 600;
             if (Keyboard.GetState().IsKeyDown(Keys.Left))
-                tileIndex = tileIndex - 1;
+                mapX += speed * dt;
             if (Keyboard.GetState().IsKeyDown(Keys.Right))
-                tileIndex = tileIndex + 1;
-            if (tileIndex < 0)
-                tileIndex += tilFile.NumBlocks;
-            else if (tileIndex >= tilFile.NumBlocks)
-                tileIndex -= tilFile.NumBlocks;
+                mapX -= speed * dt;
+            if (Keyboard.GetState().IsKeyDown(Keys.Up))
+                mapY += speed * dt;
+            if (Keyboard.GetState().IsKeyDown(Keys.Down))
+                mapY -= speed * dt;
 
             base.Update(gameTime);
         }
@@ -176,30 +148,20 @@ namespace Primevil
             }
         }
 
-        private void DrawTileBlock(int blockIndex, int xPos, int yPos)
+        private void DrawMap()
         {
-            var b = tilFile.GetBlock(blockIndex);
-            DrawMinPillar(b.Top, xPos + 32, yPos);
-            DrawMinPillar(b.Left, xPos, yPos + 16);
-            DrawMinPillar(b.Right, xPos + 64, yPos + 16);
-            DrawMinPillar(b.Bottom, xPos + 32, yPos + 32);
-        }
+            const int tileWidth = 64;
+            const int tileHeight = 32;
 
-        private void DrawDunFile()
-        {
-            const int tileWidth = 128;
-            const int tileHeight = 64;
-
-            for (int j = 0; j < dunFile.Height; ++j) {
-                for (int i = 0; i < dunFile.Width; ++i) {
-                    int x = (i * tileWidth / 2) - (j * tileWidth / 2);
-                    int y = (i * tileHeight / 2) + (j * tileHeight / 2);
-
-                    int blockIndex = dunFile.GetTileIndex(i, j) - 1;
-                    if (blockIndex < 0)
+            for (int j = 0; j < map.Height; ++j) {
+                for (int i = 0; i < map.Width; ++i) {
+                    int minIndex = map.GetPillar(i, j);
+                    if (minIndex < 0)
                         continue;
 
-                    DrawTileBlock(blockIndex, x + screenWidth / 2, y);
+                    int x = (i * tileWidth / 2) - (j * tileWidth / 2);
+                    int y = (i * tileHeight / 2) + (j * tileHeight / 2);
+                    DrawMinPillar(minIndex, (int)mapX + x + screenWidth / 2, (int)mapY + y);
                 }
             }
         }
@@ -210,7 +172,7 @@ namespace Primevil
             GraphicsDevice.Clear(Color.Black);
 
             spriteBatch.Begin();
-            DrawDunFile();
+            DrawMap();
             //DrawTileBlock(tileIndex, 200, 200);
             //spriteBatch.Draw(texture, new Rectangle(0, 0, screenHeight, screenHeight), Color.White);
             spriteBatch.End();

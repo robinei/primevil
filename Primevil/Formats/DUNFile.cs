@@ -1,8 +1,9 @@
 ﻿using System;
+using System.Diagnostics;
 
 namespace Primevil.Formats
 {
-    class DUNFile
+    public class DUNFile
     {
         private readonly int width;
         private readonly int height;
@@ -16,6 +17,16 @@ namespace Primevil.Formats
             Buffer.BlockCopy(data, 4, tiles, 0, width * height * 2);
         }
 
+        public static DUNFile Load(MPQArchive mpq, string path)
+        {
+            using (var f = mpq.Open(path)) {
+                var data = new byte[f.Length];
+                var len = f.Read(data, 0, (int)f.Length);
+                Debug.Assert(len == f.Length);
+                return new DUNFile(data);
+            }
+        }
+
         public int Width { get { return width; } }
 
         public int Height { get { return height; } }
@@ -23,7 +34,7 @@ namespace Primevil.Formats
         public int GetTileIndex(int x, int y)
         {
             int index = y * width + x;
-            return tiles[index];
+            return tiles[index] - 1;
         }
     }
 }

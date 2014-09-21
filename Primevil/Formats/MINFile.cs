@@ -1,8 +1,9 @@
 ﻿using System;
+using System.Diagnostics;
 
 namespace Primevil.Formats
 {
-    class MINFile
+    public class MINFile
     {
         private readonly int pillarSize;
         private readonly short[] indexes;
@@ -18,6 +19,15 @@ namespace Primevil.Formats
                 pillarSize = 16;
             else
                 pillarSize = 10;
+        }
+
+        public static MINFile Load(MPQArchive mpq, string path) {
+            using (var f = mpq.Open(path)) {
+                var data = new byte[f.Length];
+                var len = f.Read(data, 0, (int)f.Length);
+                Debug.Assert(len == f.Length);
+                return new MINFile(path, data);
+            }
         }
 
         public int PillarHeight
