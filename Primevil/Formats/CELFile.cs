@@ -8,13 +8,13 @@ namespace Primevil.Formats
     {
         private readonly byte[] fileData;
         private readonly byte[] palette;
-        private readonly bool isCL2;
-        private readonly bool isTileCel;
+        //private readonly bool isCL2;
+        //private readonly bool isTileCel;
 
         // header values
         private readonly uint numFrames;
         private readonly uint[] frameOffsets;
-        private readonly uint endOffset;
+        //private readonly uint endOffset;
 
         // decoding state
         private int frameNum;
@@ -35,8 +35,8 @@ namespace Primevil.Formats
         {
             this.fileData = fileData;
             this.palette = palette;
-            this.isCL2 = isCL2;
-            this.isTileCel = true;
+            //this.isCL2 = isCL2;
+            //this.isTileCel = true;
 
             // read file header
             var r = new BinaryReader(fileData);
@@ -44,7 +44,7 @@ namespace Primevil.Formats
             frameOffsets = new uint[numFrames + 1];
             for (var i = 0; i < numFrames + 1; ++i)
                 frameOffsets[i] = r.ReadU32();
-            endOffset = r.ReadU32();
+            //endOffset = r.ReadU32();
 
             Debug.WriteLine("numFrames: " + numFrames);
         }
@@ -93,8 +93,8 @@ namespace Primevil.Formats
 
         private Frame DecodeNormal()
         {
-            int offset = 0;
-            bool fromHeader = false;
+            //int offset = 0;
+            //bool fromHeader = false;
 
             // The frame has a header which we can use to determine width
             /*if (!isTileCel && fileData[frameOffset] == 10) {
@@ -120,7 +120,7 @@ namespace Primevil.Formats
             //return MakeFrame(width);
             //Debug.WriteLine("remainder: " + (frameSize % 32));
             return MakeFrame(32);
-            int diff = 0;
+            /*int diff = 0;
             for (int i = 0; i < 1024; ++i) {
                 int w = 32;
                 if ((i % 2) == 0)
@@ -133,7 +133,7 @@ namespace Primevil.Formats
 
             Debug.WriteLine("frameSize: " + frameSize);
 
-            throw new Exception("unable to find width");
+            throw new Exception("unable to find width");*/
         }
 
         int NormalWidth(bool fromHeader, int offset)

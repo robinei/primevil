@@ -178,7 +178,7 @@ namespace Primevil.Formats
         internal long Position(MPQStream stream)
         {
             var f = (FileHandle)stream.Handle;
-            return 0;
+            return f.Pos;
         }
 
         internal long Seek(MPQStream stream, long offset, SeekOrigin origin)

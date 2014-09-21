@@ -6,97 +6,128 @@ namespace Primevil
 {
     class TextureAtlas
     {
-        private class Node
+        private struct Node
         {
             public Rectangle Rect;
+            public int Child0;
+            public int Child1;
+            public bool Populated;
 
-            private Node child0, child1;
-            private bool populated;
-
-            public Node Insert(int width, int height)
-            {
-                if (child0 != null) {
-                    var node = child0.Insert(width, height);
-                    return node ?? child1.Insert(width, height);
-                }
-
-                if (populated)
-                    return null;
-
-                if (width > Rect.Width || height > Rect.Height)
-                    return null;
-
-                if (width == Rect.Width && height == Rect.Height) {
-                    populated = true;
-                    return this;
-                }
-
-                child0 = new Node();
-                child1 = new Node();
-
-                int dw = Rect.Width - width;
-                int dh = Rect.Height - height;
-
-                if (dw > dh) {
-                    child0.Rect = new Rectangle(Rect.X, Rect.Y, width, Rect.Height);
-                    child1.Rect = new Rectangle(Rect.X + width, Rect.Y, Rect.Width - width, Rect.Height);
-                } else {
-                    child0.Rect = new Rectangle(Rect.X, Rect.Y, Rect.Width, height);
-                    child1.Rect = new Rectangle(Rect.X, Rect.Y + height, Rect.Width, Rect.Height - height);
-                }
-
-                return child0.Insert(width, height);
+            public Node(Rectangle rect) {
+                Rect = rect;
+                Child0 = -1;
+                Child1 = -1;
+                Populated = false;
             }
         }
 
 
         public readonly int Dim;
         public readonly byte[] Data;
+
+        // stores the rectangles of all inserted images
         private readonly List<Rectangle> rects = new List<Rectangle>();
-        private Node root;
+
+        private int nodeCount = 0;
+        private Node[] nodes = new Node[512]; // must be array to support internal refs
 
 
         public TextureAtlas(int dim)
         {
             Dim = dim;
             Data = new byte[dim * dim * 4];
-            root = new Node {
-                Rect = new Rectangle(0, 0, dim, dim)
-            };
-        }
-
-        public void Freeze()
-        {
-            // the tree can be safely GCed now
-            root = null;
+            AddNode(new Node(new Rectangle(0, 0, dim, dim)));
         }
 
         public int Insert(byte[] image, int width, int height, bool flipVertical = false)
         {
-            if (root == null)
-                return -1; // we are frozen
-
-            var node = root.Insert(width, height);
-            if (node == null)
+            var nodeIndex = Insert(ref nodes[0], 0, width, height);
+            if (nodeIndex < 0)
                 return -1;
 
-            BlitImage(image, node.Rect, flipVertical);
+            var r = nodes[nodeIndex].Rect;
+            BlitImage(image, r, flipVertical);
 
-            int imageIndex = rects.Count;
-            rects.Add(node.Rect);
-            return imageIndex;
+            int rectIndex = rects.Count;
+            rects.Add(r);
+            return rectIndex;
         }
 
-        public Rectangle GetRectangle(int imageIndex)
+        public Rectangle GetRectangle(int rectIndex)
         {
-            return rects[imageIndex];
+            return rects[rectIndex];
         }
 
-        public int Count
+        public int RectangleCount
         {
             get { return rects.Count; }
         }
 
+        public Rectangle[] Rectangles
+        {
+            get { return rects.ToArray(); }
+        }
+
+
+        private int Insert(ref Node node, int nodeIndex, int width, int height)
+        {
+            // is this an internal node? of so, recurse
+            if (node.Child0 >= 0) {
+                var index = Insert(ref nodes[node.Child0], node.Child0, width, height);
+                if (index >= 0)
+                    return index;
+                // try the second child, if the first failed
+                return Insert(ref nodes[node.Child1], node.Child1, width, height);
+            }
+
+            // this is a leaf node
+
+            // if this leaf is populated, then bail
+            if (node.Populated)
+                return -1;
+
+            // is it too small?
+            var r = node.Rect;
+            if (width > r.Width || height > r.Height)
+                return -1;
+
+            // or just right?
+            if (width == r.Width && height == r.Height) {
+                node.Populated = true;
+                return nodeIndex;
+            }
+
+            // if larger than necessary, we split across the longest axis,
+            // ensuring the first child is just big enough along this axis
+            int dw = r.Width - width;
+            int dh = r.Height - height;
+            Rectangle rect0, rect1;
+            if (dw > dh) {
+                rect0 = new Rectangle(r.X, r.Y, width, r.Height);
+                rect1 = new Rectangle(r.X + width, r.Y, r.Width - width, r.Height);
+            } else {
+                rect0 = new Rectangle(r.X, r.Y, r.Width, height);
+                rect1 = new Rectangle(r.X, r.Y + height, r.Width, r.Height - height);
+            }
+
+            int child0 = nodeCount;
+            node.Child0 = child0;
+            node.Child1 = child0 + 1;
+
+            // these may invalidate the node ref, so don't use it any more
+            AddNode(new Node(rect0));
+            AddNode(new Node(rect1));
+
+            // insert into first child which is just big enough along
+            // at least one axis
+            return Insert(ref nodes[child0], child0, width, height);
+        }
+
+        private void AddNode(Node node) {
+            if (nodeCount >= nodes.Length)
+                Array.Resize(ref nodes, nodes.Length * 2);
+            nodes[nodeCount++] = node;
+        }
 
         private void BlitImage(byte[] image, Rectangle rect, bool flipVertical)
         {

@@ -47,7 +47,7 @@ namespace Primevil.Formats
 
         // input state
         private byte[] inBuf;
-        private int inSize;
+        //private int inSize;
         private int inPos;
         private int bitBuf;
         private int bitCount;
@@ -59,7 +59,7 @@ namespace Primevil.Formats
         {
             inBuf = buffer;
             inPos = offset;
-            inSize = size;
+            //inSize = size;
 
             bitBuf = 0;
             bitCount = 0;

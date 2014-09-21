@@ -5,9 +5,9 @@ using Primevil.Formats;
 using System;
 using System.Diagnostics;
 using System.Linq;
-using System.Windows.Forms;
 using ButtonState = Microsoft.Xna.Framework.Input.ButtonState;
 using Keys = Microsoft.Xna.Framework.Input.Keys;
+using System.Windows.Forms;
 
 namespace Primevil
 {
@@ -23,17 +23,20 @@ namespace Primevil
         private DUNFile dunFile;
         private int tileIndex;
 
+        private readonly int screenWidth;
+        private readonly int screenHeight;
+
         public Game()
         {
             graphics = new GraphicsDeviceManager(this);
-            //graphics.PreferredBackBufferWidth = 1366;
-            //graphics.PreferredBackBufferHeight = 768;
-            
-            var screen = Screen.AllScreens.First(e => e.Primary);
-            Window.IsBorderless = true;
-            Window.Position = new Point(screen.Bounds.X, screen.Bounds.Y);
-            graphics.PreferredBackBufferWidth = screen.Bounds.Width;
-            graphics.PreferredBackBufferHeight = screen.Bounds.Height;
+
+            Screen screen = Screen.FromHandle(Window.Handle);
+            screen = screen == null ? Screen.PrimaryScreen : screen;
+            screenWidth = screen.Bounds.Width;
+            screenHeight = screen.Bounds.Height;
+            //Window.IsBorderless = true;
+            graphics.PreferredBackBufferWidth = screenWidth;
+            graphics.PreferredBackBufferHeight = screenHeight;
 
             Content.RootDirectory = "Content";
         }
@@ -119,7 +122,7 @@ namespace Primevil
                     frame = celFile.GetFrame(i);
                     if (frame == null)
                         continue;
-                } catch (Exception e) {
+                } catch (Exception) {
                     Debug.WriteLine("error at: " + i);
                     break;
                 }
@@ -130,7 +133,6 @@ namespace Primevil
                 }
             }
 
-            atlas.Freeze();
             texture = new Texture2D(GraphicsDevice, atlas.Dim, atlas.Dim, false, SurfaceFormat.Color);
             texture.SetData(atlas.Data);
             tileIndex = 70;
@@ -197,7 +199,7 @@ namespace Primevil
                     if (blockIndex < 0)
                         continue;
 
-                    DrawTileBlock(blockIndex, x + 2560 / 2, y);
+                    DrawTileBlock(blockIndex, x + screenWidth / 2, y);
                 }
             }
         }
@@ -210,7 +212,7 @@ namespace Primevil
             spriteBatch.Begin();
             DrawDunFile();
             //DrawTileBlock(tileIndex, 200, 200);
-            //spriteBatch.Draw(texture, new Rectangle(0, 0, 1440, 1440), Color.White);
+            //spriteBatch.Draw(texture, new Rectangle(0, 0, screenHeight, screenHeight), Color.White);
             spriteBatch.End();
 
             base.Draw(gameTime);
