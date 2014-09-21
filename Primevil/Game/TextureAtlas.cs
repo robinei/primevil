@@ -1,19 +1,28 @@
 ﻿using System;
-using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 
-namespace Primevil
+namespace Primevil.Game
 {
-    class TextureAtlas
+    public class TextureAtlas
+    {
+        public Rect[] Rects;
+        public object Texture; // opaque to avoid dependency
+    }
+
+
+    public delegate object TextureCreator(byte[] data, int width, int height);
+
+
+    class TextureAtlasPacker
     {
         private struct Node
         {
-            public Rectangle Rect;
+            public Rect Rect;
             public int Child0;
             public int Child1;
             public bool Populated;
 
-            public Node(Rectangle rect) {
+            public Node(Rect rect) {
                 Rect = rect;
                 Child0 = -1;
                 Child1 = -1;
@@ -22,21 +31,23 @@ namespace Primevil
         }
 
 
+        public static TextureCreator TextureCreator;
+
         public readonly int Dim;
         public readonly byte[] Data;
 
         // stores the rectangles of all inserted images
-        private readonly List<Rectangle> rects = new List<Rectangle>();
+        private readonly List<Rect> rects = new List<Rect>();
 
         private int nodeCount = 0;
         private Node[] nodes = new Node[512]; // must be array to support internal refs
 
 
-        public TextureAtlas(int dim)
+        public TextureAtlasPacker(int dim)
         {
             Dim = dim;
             Data = new byte[dim * dim * 4];
-            AddNode(new Node(new Rectangle(0, 0, dim, dim)));
+            AddNode(new Node(new Rect(0, 0, dim, dim)));
         }
 
         public int Insert(byte[] image, int width, int height, bool flipVertical = false)
@@ -53,19 +64,27 @@ namespace Primevil
             return rectIndex;
         }
 
-        public Rectangle GetRectangle(int rectIndex)
+        public Rect GetRect(int rectIndex)
         {
             return rects[rectIndex];
         }
 
-        public int RectangleCount
+        public int RectCount
         {
             get { return rects.Count; }
         }
 
-        public Rectangle[] Rectangles
+        public Rect[] Rects
         {
             get { return rects.ToArray(); }
+        }
+
+        public TextureAtlas CreateAtlas()
+        {
+            return new TextureAtlas {
+                Rects = Rects,
+                Texture = TextureCreator(Data, Dim, Dim)
+            };
         }
 
 
@@ -101,13 +120,13 @@ namespace Primevil
             // ensuring the first child is just big enough along this axis
             int dw = r.Width - width;
             int dh = r.Height - height;
-            Rectangle rect0, rect1;
+            Rect rect0, rect1;
             if (dw > dh) {
-                rect0 = new Rectangle(r.X, r.Y, width, r.Height);
-                rect1 = new Rectangle(r.X + width, r.Y, r.Width - width, r.Height);
+                rect0 = new Rect(r.X, r.Y, width, r.Height);
+                rect1 = new Rect(r.X + width, r.Y, r.Width - width, r.Height);
             } else {
-                rect0 = new Rectangle(r.X, r.Y, r.Width, height);
-                rect1 = new Rectangle(r.X, r.Y + height, r.Width, r.Height - height);
+                rect0 = new Rect(r.X, r.Y, r.Width, height);
+                rect1 = new Rect(r.X, r.Y + height, r.Width, r.Height - height);
             }
 
             int child0 = nodeCount;
@@ -129,7 +148,7 @@ namespace Primevil
             nodes[nodeCount++] = node;
         }
 
-        private void BlitImage(byte[] image, Rectangle rect, bool flipVertical)
+        private void BlitImage(byte[] image, Rect rect, bool flipVertical)
         {
             int srcPitch = rect.Width * 4;
             int dstPitch = Dim * 4;

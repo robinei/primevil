@@ -1,7 +1,7 @@
 ﻿using System;
 using Primevil.Formats;
 
-namespace Primevil
+namespace Primevil.Game
 {
     public class SectorTemplate
     {
