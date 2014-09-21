@@ -7,13 +7,16 @@ namespace Primevil.Formats
     public class CELFile
     {
         private readonly byte[] fileData;
-        //private readonly bool isCL2;
+        private readonly bool isCL2;
         //private readonly bool isTileCel;
 
-        // header values
-        private readonly uint numFrames;
-        private readonly uint[] frameOffsets;
-        //private readonly uint endOffset;
+        private struct FrameInfo
+        {
+            public int Offset;
+            public int Size;
+        }
+
+        private readonly List<FrameInfo> frames = new List<FrameInfo>();
 
         // decoding state
         private byte[] palette;
@@ -34,18 +37,26 @@ namespace Primevil.Formats
         public CELFile(byte[] fileData, bool isCL2 = false)
         {
             this.fileData = fileData;
-            //this.isCL2 = isCL2;
-            //this.isTileCel = true;
+            this.isCL2 = isCL2;
+            //this.isTileCel = !isCL2;
 
-            // read file header
             var r = new BinaryReader(fileData);
-            numFrames = r.ReadU32();
-            frameOffsets = new uint[numFrames + 1];
-            for (var i = 0; i < numFrames + 1; ++i)
-                frameOffsets[i] = r.ReadU32();
-            //endOffset = r.ReadU32();
+            var first = r.ReadU32();
+            if (first == 32) {
+                if (isCL2) {
+                    r.Seek(0);
+                    ReadCL2ArchiveOffsets(r);
+                } else {
+                    r.Seek(32);
+                    for (int i = 0; i < 8; ++i)
+                        ReadNormalOffsets(r);
+                }
+            } else {
+                r.Seek(0);
+                ReadNormalOffsets(r);
+            }
 
-            Debug.WriteLine("numFrames: " + numFrames);
+            Debug.WriteLine("NumFrames: " + NumFrames);
         }
 
         public static CELFile Load(MPQArchive mpq, string path)
@@ -54,26 +65,58 @@ namespace Primevil.Formats
                 var data = new byte[f.Length];
                 var len = f.Read(data, 0, (int)f.Length);
                 Debug.Assert(len == f.Length);
-                return new CELFile(data);
+                bool isCL2 = path.EndsWith(".cl2");
+                return new CELFile(data, isCL2);
+            }
+        }
+
+        private void ReadCL2ArchiveOffsets(BinaryReader r)
+        {
+            var headerOffsets = new uint[8];
+            for (int i = 0; i < 8; ++i)
+                headerOffsets[i] = r.ReadU32();
+            for (int i = 0; i < 8; ++i) {
+                r.Seek((int)headerOffsets[i]);
+                ReadNormalOffsets(r, headerOffsets[i]);
+            }
+        }
+
+        private void ReadNormalOffsets(BinaryReader r, uint offsetOffset = 0)
+        {
+            uint numFrames = r.ReadU32();
+            var offsets = new uint[numFrames + 1];
+            for (var i = 0; i <= numFrames; ++i)
+                offsets[i] = r.ReadU32();
+            for (var i = 0; i < numFrames; ++i) {
+                frames.Add(new FrameInfo {
+                    Offset = (int)(offsets[i] + offsetOffset),
+                    Size = (int)(offsets[i + 1] - offsets[i])
+                });
             }
         }
 
         public int NumFrames
         {
-            get { return (int)numFrames; }
+            get { return frames.Count; }
         }
 
         public Frame GetFrame(int index, byte[] palette)
         {
-            if (index < 0 || index >= numFrames)
+            if (index < 0 || index >= NumFrames)
                 throw new ArgumentException();
 
             this.palette = palette;
             frameNum = index;
-            frameOffset = (int)frameOffsets[index];
-            frameSize = (int)frameOffsets[index + 1] - frameOffset;
+            frameOffset = frames[index].Offset;
+            frameSize = frames[index].Size;
             filePos = frameOffset;
             decoded.Clear();
+
+            if (isCL2) {
+                //Debug.WriteLine("CL2");
+                //return null;
+                return DecodeCL2();
+            }
 
             //Debug.WriteLine("--------");
             //Debug.WriteLine("size: " + frameSize);
@@ -99,6 +142,93 @@ namespace Primevil.Formats
             //return null;
             //Debug.WriteLine("ELSE");
             return DecodeNormal();
+        }
+
+        private Frame DecodeCL2()
+        {
+            int i = 10; // CL2 frames always have headers
+
+            for(; i < frameSize; ++i)
+            {
+                // Color command
+                if(fileData[frameOffset + i] > 127)
+                {
+                    int val = 256 - fileData[frameOffset + i];
+                   
+                    // Regular command
+                    if(val <= 65)
+                    {
+                        int j;
+                        // Just push the number of pixels specified by the command
+                        for(j = 1; j < val+1 && i+j < frameSize; ++j)
+                        {
+                            int index = i+j;
+                            PutPaletteColor(fileData[frameOffset + index]);
+                        }
+                        
+                        i+= val;
+                    }
+
+                    // RLE (run length encoded) Colour command
+                    else
+                    {
+                        for (int j = 0; j < val - 65; j++)
+                            PutPaletteColor(fileData[frameOffset + i + 1]);
+                        i += 1;
+                    }
+                }
+
+                // Transparency command
+                else
+                {
+                    // Push transparent pixels
+                    FillTransparent(fileData[frameOffset + i]);
+                }
+            }
+
+            int offset = fileData[frameOffset + 3] << 8 | fileData[frameOffset + 2];
+            int width = CL2Width(offset);
+            return MakeFrame(width);
+        }
+
+        int CL2Width(int offset)
+        {
+            int pixels = 0;
+            int i = 10; // CL2 frames always have headers
+
+            for(; i < frameSize; ++i)
+            {
+                if(i == offset)
+                    return pixels / 32;
+
+                // Color command
+                if(fileData[frameOffset + i] > 127)
+                {
+                    var val = 256 - fileData[frameOffset + i];
+
+                    // Regular command
+                    if(val <= 65)
+                    {
+                        pixels += val;
+                        i+= val;
+                    }
+
+                    // RLE (run length encoded) Colour command
+                    else
+                    {
+                        pixels += val-65; 
+                        i += 1;
+                    }
+                }
+
+                // Transparency command
+                else
+                {
+                    pixels += fileData[frameOffset + i];
+                }
+            }
+
+            return -1; // keep the compiler happy
         }
 
         private Frame DecodeNormal()

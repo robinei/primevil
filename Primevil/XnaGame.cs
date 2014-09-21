@@ -9,6 +9,7 @@ using System.Linq;
 using ButtonState = Microsoft.Xna.Framework.Input.ButtonState;
 using Keys = Microsoft.Xna.Framework.Input.Keys;
 using System.Windows.Forms;
+using System.IO;
 
 namespace Primevil
 {
@@ -34,6 +35,8 @@ namespace Primevil
         private Level level;
 
         private int hoveredX, hoveredY;
+
+        private TextureAtlas charAtlas;
 
         public XnaGame()
         {
@@ -70,6 +73,22 @@ namespace Primevil
 
             var mpq = new MPQArchive("DIABDAT.MPQ");
             level = TownLevel.LoadTownLevel(mpq);
+
+            var palette = new byte[768];
+            using (var f = new FileStream("palette.pal", FileMode.Open, FileAccess.Read)) {
+                var len = f.Read(palette, 0, 768);
+                Debug.Assert(len == 768);
+            }
+
+            var packer = new TextureAtlasPacker(1024);
+            var celFile = CELFile.Load(mpq, "plrgfx/rogue/rld/rldas.cl2");
+            for (int i = 0; i < celFile.NumFrames; ++i) {
+                var frame = celFile.GetFrame(i, palette);
+                int rectId = packer.Insert(frame.Data, frame.Width, frame.Height, true);
+                if (rectId < 0)
+                    throw new Exception("atlas is full: " + i);
+            }
+            charAtlas = packer.CreateAtlas();
         }
 
 
@@ -192,7 +211,8 @@ namespace Primevil
 
             spriteBatch.Begin();
             DrawMap();
-            //spriteBatch.Draw(texture, new Rectangle(0, 0, screenHeight, screenHeight), Color.White);
+            spriteBatch.Draw((Texture2D)charAtlas.Texture, new Vector2(0, 0));
+            //spriteBatch.Draw((Texture2D)charAtlas.Texture, new Rectangle(0, 0, screenHeight, screenHeight), Color.White);
             spriteBatch.End();
 
             base.Draw(gameTime);

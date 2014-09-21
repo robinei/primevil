@@ -13,6 +13,11 @@ namespace Primevil.Formats
             this.offset = offset;
         }
 
+        public void Seek(int offset)
+        {
+            this.offset = offset;
+        }
+
         public void Skip(int count)
         {
             offset += count;
