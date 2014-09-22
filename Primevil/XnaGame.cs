@@ -1,4 +1,5 @@
 ﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Primevil.Formats;
@@ -24,7 +25,7 @@ namespace Primevil
 
     public class XnaGame : Microsoft.Xna.Framework.Game
     {
-        private GraphicsDeviceManager graphics;
+        private readonly GraphicsDeviceManager graphics;
         private SpriteBatch spriteBatch;
 
         private int screenWidth;
@@ -37,6 +38,9 @@ namespace Primevil
         private int hoveredX, hoveredY;
 
         private TextureAtlas charAtlas;
+
+        private bool musicPlaying;
+        private SoundEffect music;
 
         public XnaGame()
         {
@@ -78,6 +82,13 @@ namespace Primevil
             var mpq = new MPQArchive("DIABDAT.MPQ");
             level = TownLevel.LoadTownLevel(mpq);
 
+            using (var wavStream = mpq.Open("music/dtowne.wav")) {
+                var wavData = new byte[wavStream.Length];
+                var wavLen = wavStream.Read(wavData, 0, (int)wavStream.Length);
+                Debug.Assert(wavLen == wavStream.Length);
+                music = new SoundEffect(wavData, 22050, AudioChannels.Stereo);
+            }
+
             var palette = new byte[768];
             using (var f = new FileStream("Content/palette.pal", FileMode.Open, FileAccess.Read)) {
                 var len = f.Read(palette, 0, 768);
@@ -103,6 +114,11 @@ namespace Primevil
 
         protected override void Update(GameTime gameTime)
         {
+            if (!musicPlaying && gameTime.TotalGameTime.Seconds > 4) {
+                music.Play();
+                musicPlaying = true;
+            }
+
             var dt = gameTime.ElapsedGameTime.TotalSeconds;
 
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))

@@ -221,7 +221,9 @@ namespace Primevil.Formats
                     uint size = f.BlockOffsets[blockIndex + 1] - f.BlockOffsets[blockIndex];
 
                     f.Stream.Seek(pos, SeekOrigin.Begin);
-                    f.Stream.Read(f.TempBuffer, 0, (int)size);
+                    var len = f.Stream.Read(f.TempBuffer, 0, (int)size);
+                    if (len != (int)size)
+                        throw new Exception("read error");
 
                     if ((f.Entry.Flags & FileEncrypted) != 0)
                         Decrypt(f.TempBuffer, 0, (int)size, f.DecryptionKey + blockIndex, f.CryptBuffer);
@@ -237,7 +239,6 @@ namespace Primevil.Formats
                         Buffer.BlockCopy(f.TempBuffer, 0, f.BlockBuffer, 0, (int)size);
                         f.BlockSize = size;
                     }
-                    f.BlockIndex = blockIndex;
                 }
 
                 int toRead = count;
@@ -262,10 +263,19 @@ namespace Primevil.Formats
         private void LoadOffsetsTable(FileHandle f)
         {
             uint offsetsCount = f.BlockCount + 1;
-            if ((f.Entry.Flags & FileSectorCrc) != 0)
-                ++offsetsCount;
+            //if ((f.Entry.Flags & FileSectorCrc) != 0)
+            //    ++offsetsCount;
 
             f.BlockOffsets = new uint[offsetsCount];
+
+            if ((f.Entry.Flags & CompressedFlagsMask) == 0) {
+                // we can just generate the offsets if the file is not compressed,
+                // and there will be no offset table to read anyway
+                for (uint i = 0; i < offsetsCount - 1; ++i)
+                    f.BlockOffsets[i] = BlockSize * i;
+                f.BlockOffsets[offsetsCount - 1] = f.Entry.FSize;
+                return;
+            }
 
             // load table
             var offsetsSize = (int)(4 * offsetsCount);
