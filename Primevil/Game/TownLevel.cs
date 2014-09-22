@@ -6,12 +6,19 @@ namespace Primevil.Game
 {
     public static class TownLevel
     {
-        public static Level LoadTownLevel(MPQArchive mpq)
+        public static Level Load(MPQArchive mpq)
         {
             var palette = new byte[768];
             using (var f = mpq.Open("levels/towndata/town.pal")) {
                 var len = f.Read(palette, 0, 768);
                 Debug.Assert(len == palette.Length);
+            }
+
+            byte[] solData;
+            using (var f = mpq.Open("levels/towndata/town.sol")) {
+                solData = new byte[f.Length];
+                var len = f.Read(solData, 0, (int)f.Length);
+                Debug.Assert(len == f.Length);
             }
 
             var celFile = CELFile.Load(mpq, "levels/towndata/town.cel");
@@ -28,7 +35,7 @@ namespace Primevil.Game
             var sectors = new SectorTemplate[4];
             for (int i = 0; i < dunNames.Length; ++i) {
                 var dunFile = DUNFile.Load(mpq, dunNames[i]);
-                sectors[i] = new SectorTemplate(dunFile, tilFile);
+                sectors[i] = new SectorTemplate(dunFile, tilFile, solData);
             }
 
             int mapWidth = sectors[0].Width + sectors[3].Width;

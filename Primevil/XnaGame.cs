@@ -6,11 +6,11 @@ using Primevil.Formats;
 using Primevil.Game;
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Windows.Forms;
 using ButtonState = Microsoft.Xna.Framework.Input.ButtonState;
 using Keys = Microsoft.Xna.Framework.Input.Keys;
-using System.Windows.Forms;
-using System.IO;
 
 namespace Primevil
 {
@@ -20,39 +20,89 @@ namespace Primevil
         {
             return new Rectangle(r.X, r.Y, r.Width, r.Height);
         }
+
+        public static Vector2 ToVector2(this CoordF c)
+        {
+            return new Vector2(c.X, c.Y);
+        }
+
+        public static Vector2 ToVector2(this Coord c)
+        {
+            return new Vector2(c.X, c.Y);
+        }
+
+        public static Coord ToCoord(this Point p)
+        {
+            return new Coord(p.X, p.Y);
+        }
     }
+
+
+
+    public struct WalkState
+    {
+        public Coord Start;
+        public CoordF Position;
+        public Direction Direction;
+        public bool Walking;
+
+        public void Walk(Direction dir)
+        {
+            Start = Position.ToCoord();
+            Direction = dir;
+            Walking = true;
+        }
+
+        public Coord Target { get { return Start + Direction.DeltaCoord(); } }
+
+        public void Update(float dt)
+        {
+            if (!Walking)
+                return;
+
+            var target = Target;
+            var targetF = target.ToCoordF() + new CoordF(0.5f, 0.5f);
+
+            var d = targetF - Position;
+            var len = d.Length;
+
+            if (len < 0.01) {
+                Position = targetF;
+                Walking = false;
+                return;
+            }
+
+            const float speed = 2;
+            float moveAmount = speed * dt;
+            if (moveAmount > len)
+                moveAmount = len;
+            d.Normalize();
+            Position = Position + (d * moveAmount);
+        }
+    }
+
 
 
     public class XnaGame : Microsoft.Xna.Framework.Game
     {
         private readonly GraphicsDeviceManager graphics;
         private SpriteBatch spriteBatch;
-
         private int screenWidth;
         private int screenHeight;
 
-        private double mapX = 0;
-        private double mapY = 0;
-        private Level level;
-
-        private int hoveredX, hoveredY;
-
+        private IsoView isoView;
         private TextureAtlas charAtlas;
+        private Animation playerAnim;
 
         private bool musicPlaying;
         private SoundEffect music;
 
+        private WalkState walkState = new WalkState {Position = new CoordF(0.5f, 0.5f)};
+
         public XnaGame()
         {
             graphics = new GraphicsDeviceManager(this);
-
             Content.RootDirectory = "Content";
-
-            TextureAtlasPacker.TextureCreator = (data, width, height) => {
-                var tex = new Texture2D(GraphicsDevice, width, height, false, SurfaceFormat.Color);
-                tex.SetData(data);
-                return tex;
-            };
         }
 
 
@@ -71,6 +121,19 @@ namespace Primevil
             graphics.PreferredBackBufferWidth = screenWidth;
             graphics.PreferredBackBufferHeight = screenHeight;
             graphics.ApplyChanges();
+            
+            isoView = new IsoView {
+                ViewSize = new Size(screenWidth, screenHeight),
+                DrawTile = (texture, pos, rect) =>
+                    spriteBatch.Draw((Texture2D)texture, pos.ToVector2(), sourceRectangle: rect.ToXnaRect())
+            };
+
+            TextureAtlasPacker.TextureCreator = (data, width, height) => {
+                var tex = new Texture2D(GraphicsDevice, width, height, false, SurfaceFormat.Color);
+                tex.SetData(data);
+                return tex;
+            };
+
             base.Initialize();
         }
 
@@ -80,7 +143,7 @@ namespace Primevil
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
             var mpq = new MPQArchive("DIABDAT.MPQ");
-            level = TownLevel.LoadTownLevel(mpq);
+            isoView.Level = TownLevel.Load(mpq);
 
             using (var wavStream = mpq.Open("music/dtowne.wav")) {
                 var wavData = new byte[wavStream.Length];
@@ -103,7 +166,17 @@ namespace Primevil
                 if (rectId < 0)
                     throw new Exception("atlas is full: " + i);
             }
+
             charAtlas = packer.CreateAtlas();
+
+            var playerSprite = new Sprite(new []{8,8,8,8,8,8,8,8},
+                Enumerable.Range(0, 8*8).Select(index => new Sprite.Frame {
+                    Texture = charAtlas.Texture,
+                    SourceRect = charAtlas.Rects[index]
+                }
+            ).ToArray());
+
+            playerAnim = new Animation(playerSprite, 1.0f / 10);
         }
 
 
@@ -114,125 +187,82 @@ namespace Primevil
 
         protected override void Update(GameTime gameTime)
         {
-            if (!musicPlaying && gameTime.TotalGameTime.Seconds > 4) {
-                music.Play();
-                musicPlaying = true;
-            }
-
-            var dt = gameTime.ElapsedGameTime.TotalSeconds;
+            var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
-            var mousePos = Mouse.GetState().Position;
-            double speed = 600;
+            var mousePos = Mouse.GetState().Position.ToCoord();
+            isoView.HoveredTile = isoView.ScreenToTile(mousePos);
 
-            if (Keyboard.GetState().IsKeyDown(Keys.Left) || Keyboard.GetState().IsKeyDown(Keys.A) || mousePos.X <= 1)
-                mapX -= speed * dt;
-            if (Keyboard.GetState().IsKeyDown(Keys.Right) || Keyboard.GetState().IsKeyDown(Keys.D) || mousePos.X >= screenWidth - 2)
-                mapX += speed * dt;
-            if (Keyboard.GetState().IsKeyDown(Keys.Up) || Keyboard.GetState().IsKeyDown(Keys.W) || mousePos.Y <= 1)
-                mapY -= speed * dt;
-            if (Keyboard.GetState().IsKeyDown(Keys.Down) || Keyboard.GetState().IsKeyDown(Keys.S) || mousePos.Y >= screenHeight - 2)
-                mapY += speed * dt;
+            //var pos = isoView.ScreenToTile(mousePos.ToCoordF());
+            //Debug.WriteLine("pos({0}, {1})", pos.X, pos.Y);
 
-            ScreenToTile(mousePos.X, mousePos.Y, out hoveredX, out hoveredY);
+            const float scrollSpeed = 600;
+            if (Keyboard.GetState().IsKeyDown(Keys.Left) || mousePos.X <= 1)
+                isoView.ViewOffset.X -= scrollSpeed * dt;
+            if (Keyboard.GetState().IsKeyDown(Keys.Right) || mousePos.X >= screenWidth - 2)
+                isoView.ViewOffset.X += scrollSpeed * dt;
+            if (Keyboard.GetState().IsKeyDown(Keys.Up) || mousePos.Y <= 1)
+                isoView.ViewOffset.Y -= scrollSpeed * dt;
+            if (Keyboard.GetState().IsKeyDown(Keys.Down) || mousePos.Y >= screenHeight - 2)
+                isoView.ViewOffset.Y += scrollSpeed * dt;
+
+            if (Keyboard.GetState().IsKeyDown(Keys.A) && Keyboard.GetState().IsKeyDown(Keys.W))
+                walkState.Walk(Direction.West);
+            else if (Keyboard.GetState().IsKeyDown(Keys.W) && Keyboard.GetState().IsKeyDown(Keys.D))
+                walkState.Walk(Direction.North);
+            else if (Keyboard.GetState().IsKeyDown(Keys.S) && Keyboard.GetState().IsKeyDown(Keys.D))
+                walkState.Walk(Direction.East);
+            else if (Keyboard.GetState().IsKeyDown(Keys.S) && Keyboard.GetState().IsKeyDown(Keys.A))
+                walkState.Walk(Direction.South);
+            else if (Keyboard.GetState().IsKeyDown(Keys.A))
+                walkState.Walk(Direction.SouthWest);
+            else if (Keyboard.GetState().IsKeyDown(Keys.S))
+                walkState.Walk(Direction.SouthEast);
+            else if (Keyboard.GetState().IsKeyDown(Keys.D))
+                walkState.Walk(Direction.NorthEast);
+            else if (Keyboard.GetState().IsKeyDown(Keys.W))
+                walkState.Walk(Direction.NorthWest);
+
+            if (!isoView.Level.Map.IsPassable(walkState.Target))
+                walkState.Walking = false;
+
+            playerAnim.Direction = walkState.Direction;
+            walkState.Update(dt);
+            playerAnim.Update(dt);
+
+            if (music != null && !musicPlaying && gameTime.TotalGameTime.Seconds > 4) {
+                music.Play();
+                musicPlaying = true;
+            }
 
             base.Update(gameTime);
         }
 
 
-        private void ScreenToTile(int x, int y, out int tileX, out int tileY)
+        private void DrawPlayer()
         {
-            const int w = 32; // tileWidth / 2
-            const int h = 16; // tileHeight / 2
-            int xoff = -(int)mapX;
-            int yoff = -(int)mapY;
+            var p = isoView.TileToScreen(walkState.Position);
+            var frame = playerAnim.CurrentFrame;
 
-            tileX = ( x*h + y*w - xoff*h - yoff*w) / (2*w*h);
-            tileY = (-x*h + y*w + xoff*h - yoff*w) / (2*w*h);
+
+            spriteBatch.Draw(
+                (Texture2D)frame.Texture,
+                new Vector2(p.X - frame.Width*0.5f + 32, p.Y - frame.Height + 15),
+                sourceRectangle: frame.SourceRect.ToXnaRect()
+            );
         }
-
-        private static void TileToWorld(int i, int j, out int screenX, out int screenY)
-        {
-            const int w = 32; // tileWidth / 2
-            const int h = 16; // tileHeight / 2
-            screenX = i * w - j * w;
-            screenY = i * h + j * h;
-        }
-
-        private void DrawPillar(int pillarIndex, int xPos, int yPos)
-        {
-            int maxY = level.PillarDefs.PillarHeight;
-            yPos -= (maxY - 1) * 32; // yPos initially points to position of lowest tile
-            for (int x = 0; x < 2; ++x) {
-                for (int y = 0; y < maxY; ++y) {
-                    int celIndex = level.PillarDefs.GetCelIndex(pillarIndex, x, y);
-                    if (celIndex < 0)
-                        continue;
-
-                    spriteBatch.Draw(
-                        (Texture2D)level.Tileset.Texture,
-                        new Vector2(xPos + x * 32, yPos + y * 32),
-                        sourceRectangle: level.Tileset.Rects[celIndex].ToXnaRect()
-                    );
-                }
-            }
-        }
-
-        private void DrawMap()
-        {
-            const int tileWidth = 64;
-            const int tileHeight = 32;
-            var map = level.Map;
-
-            int i0, j0;
-            ScreenToTile(0, 0, out i0, out j0);
-            i0 -= 2;
-
-            int x, y;
-            TileToWorld(i0, j0, out x, out y);
-            x -= (int)mapX + 32;
-            y -= (int)mapY;
-
-            int row = 0;
-            int x0 = x;
-            int i = i0, j = j0;
-            while (y < screenHeight + 300) {
-                for (; x < screenWidth; x += tileWidth, ++i, --j) {
-                    if (i == hoveredX && j == hoveredY)
-                        continue;
-                    if (i < 0 || j < 0 || i >= map.Width || j >= map.Height)
-                        continue;
-                    int minIndex = map.GetPillar(i, j);
-                    if (minIndex < 0)
-                        continue;
-
-                    DrawPillar(minIndex, x, y);
-                }
-
-                x = x0;
-                y += tileHeight / 2;
-                if (++row % 2 != 0) {
-                    x -= tileWidth / 2;
-                    ++j0;
-                } else {
-                    ++i0;
-                }
-                i = i0;
-                j = j0;
-            }
-        }
-
 
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(Color.Black);
 
             spriteBatch.Begin();
-            DrawMap();
-            if (charAtlas != null)
-                spriteBatch.Draw((Texture2D)charAtlas.Texture, new Vector2(0, 0));
+            isoView.DrawMap();
+            DrawPlayer();
+            //if (charAtlas != null)
+            //    spriteBatch.Draw((Texture2D)charAtlas.Texture, new Vector2(0, 0));
             //spriteBatch.Draw((Texture2D)charAtlas.Texture, new Rectangle(0, 0, screenHeight, screenHeight), Color.White);
             spriteBatch.End();
 

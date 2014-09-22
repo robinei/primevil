@@ -1,4 +1,3 @@
-using System;
 
 namespace Primevil.Game
 {

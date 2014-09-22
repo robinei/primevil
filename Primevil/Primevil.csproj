@@ -42,6 +42,12 @@
     <Compile Include="Formats\Diabdat.cs" />
     <Compile Include="Formats\TILFile.cs" />
     <Compile Include="Formats\MPQArchive.cs" />
+    <Compile Include="Game\Animation.cs" />
+    <Compile Include="Game\Coord.cs" />
+    <Compile Include="Game\Direction.cs" />
+    <Compile Include="Game\IsoView.cs" />
+    <Compile Include="Game\Size.cs" />
+    <Compile Include="Game\Sprite.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="XnaGame.cs" />
