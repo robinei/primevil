@@ -55,13 +55,17 @@ namespace Primevil
         protected override void Initialize()
         {
             IsMouseVisible = true;
-            Screen screen = Screen.FromHandle(Window.Handle);
-            screen = screen == null ? Screen.PrimaryScreen : screen;
+            var screen = Screen.FromHandle(Window.Handle) ?? Screen.PrimaryScreen;
             screenWidth = screen.Bounds.Width;
             screenHeight = screen.Bounds.Height;
+#if WINDOWS
+            Window.IsBorderless = true;
+            Window.Position = new Point(screen.Bounds.X, screen.Bounds.Y);
+#else
+            graphics.IsFullScreen = true;
+#endif
             graphics.PreferredBackBufferWidth = screenWidth;
             graphics.PreferredBackBufferHeight = screenHeight;
-            graphics.IsFullScreen = true;
             graphics.ApplyChanges();
             base.Initialize();
         }
@@ -75,7 +79,7 @@ namespace Primevil
             level = TownLevel.LoadTownLevel(mpq);
 
             var palette = new byte[768];
-            using (var f = new FileStream("palette.pal", FileMode.Open, FileAccess.Read)) {
+            using (var f = new FileStream("Content/palette.pal", FileMode.Open, FileAccess.Read)) {
                 var len = f.Read(palette, 0, 768);
                 Debug.Assert(len == 768);
             }
@@ -211,7 +215,8 @@ namespace Primevil
 
             spriteBatch.Begin();
             DrawMap();
-            spriteBatch.Draw((Texture2D)charAtlas.Texture, new Vector2(0, 0));
+            if (charAtlas != null)
+                spriteBatch.Draw((Texture2D)charAtlas.Texture, new Vector2(0, 0));
             //spriteBatch.Draw((Texture2D)charAtlas.Texture, new Rectangle(0, 0, screenHeight, screenHeight), Color.White);
             spriteBatch.End();
 
