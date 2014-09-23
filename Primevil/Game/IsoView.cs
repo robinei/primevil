@@ -1,4 +1,8 @@
-﻿namespace Primevil.Game
+﻿using System.Collections.Generic;
+using System.Diagnostics;
+using Microsoft.Xna.Framework.Graphics;
+
+namespace Primevil.Game
 {
     class IsoView
     {
@@ -12,6 +16,8 @@
 
         public delegate void TileDrawer(object texture, Coord pos, Rect sourceRect);
         public TileDrawer DrawTile;
+
+        private readonly HashSet<Coord> pathCoords = new HashSet<Coord>();
 
 
         public static Coord TileToWorld(Coord tilePos)
@@ -61,6 +67,14 @@
 
         public void DrawMap()
         {
+            var pf = new PathFind(Level.Map);
+            var path = pf.Search(new Coord(0, 0), HoveredTile);
+            pathCoords.Clear();
+            if (path != null) {
+                foreach (var c in path)
+                    pathCoords.Add(c);
+            }
+
             const int tileWidth = 64;
             const int tileHeight = 32;
             var map = Level.Map;
@@ -83,6 +97,8 @@
             while (y < ViewSize.Height + 300) {
                 for (; x < ViewSize.Width; x += tileWidth, ++i, --j) {
                     if (i == HoveredTile.X && j == HoveredTile.Y)
+                        continue;
+                    if (pathCoords.Contains(new Coord(i, j)))
                         continue;
                     if (i < 0 || j < 0 || i >= map.Width || j >= map.Height)
                         continue;

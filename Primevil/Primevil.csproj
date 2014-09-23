@@ -46,6 +46,7 @@
     <Compile Include="Game\Coord.cs" />
     <Compile Include="Game\Direction.cs" />
     <Compile Include="Game\IsoView.cs" />
+    <Compile Include="Game\PathFind.cs" />
     <Compile Include="Game\Size.cs" />
     <Compile Include="Game\Sprite.cs" />
     <Compile Include="Program.cs" />
