@@ -1,5 +1,4 @@
-﻿using System;
-using Primevil.Formats;
+﻿using Primevil.Formats;
 
 namespace Primevil.Game
 {
@@ -8,6 +7,9 @@ namespace Primevil.Game
         public Map Map;
         public TextureAtlas Tileset;
         public MINFile PillarDefs;
+
+        public readonly IntrusiveList<Creature, LevelCreatureList> Creatures = new IntrusiveList<Creature, LevelCreatureList>();
+
 
         public Level()
         {

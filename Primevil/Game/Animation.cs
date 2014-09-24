@@ -1,7 +1,7 @@
 ﻿
 namespace Primevil.Game
 {
-    class Animation
+    public class Animation
     {
         private readonly Sprite sprite;
         private readonly float frameDelay;

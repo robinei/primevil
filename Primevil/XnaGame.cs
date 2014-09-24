@@ -1,4 +1,5 @@
-﻿using Microsoft.Xna.Framework;
+﻿using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -38,66 +39,24 @@ namespace Primevil
     }
 
 
-
-    public struct WalkState
-    {
-        public Coord Start;
-        public CoordF Position;
-        public Direction Direction;
-        public bool Walking;
-
-        public void Walk(Direction dir)
-        {
-            Start = Position.ToCoord();
-            Direction = dir;
-            Walking = true;
-        }
-
-        public Coord Target { get { return Start + Direction.DeltaCoord(); } }
-
-        public void Update(float dt)
-        {
-            if (!Walking)
-                return;
-
-            var target = Target;
-            var targetF = target.ToCoordF() + new CoordF(0.5f, 0.5f);
-
-            var d = targetF - Position;
-            var len = d.Length;
-
-            if (len < 0.01) {
-                Position = targetF;
-                Walking = false;
-                return;
-            }
-
-            const float speed = 2;
-            float moveAmount = speed * dt;
-            if (moveAmount > len)
-                moveAmount = len;
-            d.Normalize();
-            Position = Position + (d * moveAmount);
-        }
-    }
-
-
-
     public class XnaGame : Microsoft.Xna.Framework.Game
     {
         private readonly GraphicsDeviceManager graphics;
         private SpriteBatch spriteBatch;
         private int screenWidth;
         private int screenHeight;
+        private MouseState lastMouseState;
 
         private IsoView isoView;
         private TextureAtlas charAtlas;
         private Animation playerAnim;
+        private Creature player;
+        private readonly List<Coord> pathList = new List<Coord>();
+        private int pathIndex = 0;
+        private PathFind pathFind;
 
         private bool musicPlaying;
         private SoundEffect music;
-
-        private WalkState walkState = new WalkState {Position = new CoordF(0.5f, 0.5f)};
 
         public XnaGame()
         {
@@ -127,6 +86,7 @@ namespace Primevil
                 DrawTile = (texture, pos, rect) =>
                     spriteBatch.Draw((Texture2D)texture, pos.ToVector2(), sourceRectangle: rect.ToXnaRect())
             };
+            isoView.CenterOn(new Coord(75, 68));
 
             TextureAtlasPacker.TextureCreator = (data, width, height) => {
                 var tex = new Texture2D(GraphicsDevice, width, height, false, SurfaceFormat.Color);
@@ -145,12 +105,12 @@ namespace Primevil
             var mpq = new MPQArchive("DIABDAT.MPQ");
             isoView.Level = TownLevel.Load(mpq);
 
-            using (var wavStream = mpq.Open("music/dtowne.wav")) {
+            /*using (var wavStream = mpq.Open("music/dtowne.wav")) {
                 var wavData = new byte[wavStream.Length];
                 var wavLen = wavStream.Read(wavData, 0, (int)wavStream.Length);
                 Debug.Assert(wavLen == wavStream.Length);
                 music = new SoundEffect(wavData, 22050, AudioChannels.Stereo);
-            }
+            }*/
 
             var palette = new byte[768];
             using (var f = new FileStream("Content/palette.pal", FileMode.Open, FileAccess.Read)) {
@@ -159,7 +119,7 @@ namespace Primevil
             }
 
             var packer = new TextureAtlasPacker(1024);
-            var celFile = CELFile.Load(mpq, "plrgfx/rogue/rld/rldas.cl2");
+            var celFile = CELFile.Load(mpq, "plrgfx/warrior/wls/wlswl.cl2");
             for (int i = 0; i < celFile.NumFrames; ++i) {
                 var frame = celFile.GetFrame(i, palette);
                 int rectId = packer.Insert(frame.Data, frame.Width, frame.Height, true);
@@ -177,6 +137,13 @@ namespace Primevil
             ).ToArray());
 
             playerAnim = new Animation(playerSprite, 1.0f / 10);
+
+            player = new Creature {
+                Position = new CoordF(75.5f, 68.5f),
+                CurrentAnimation = playerAnim
+            };
+            isoView.Level.Creatures.PushBack(player);
+            isoView.Level.Map.PlaceCreature(player);
         }
 
 
@@ -192,67 +159,50 @@ namespace Primevil
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
-            var mousePos = Mouse.GetState().Position.ToCoord();
+            var mouseState = Mouse.GetState();
+            var mousePos = mouseState.Position.ToCoord();
+
             isoView.HoveredTile = isoView.ScreenToTile(mousePos);
 
-            //var pos = isoView.ScreenToTile(mousePos.ToCoordF());
-            //Debug.WriteLine("pos({0}, {1})", pos.X, pos.Y);
-
             const float scrollSpeed = 600;
-            if (Keyboard.GetState().IsKeyDown(Keys.Left) || mousePos.X <= 1)
+            if (Keyboard.GetState().IsKeyDown(Keys.Left) || Keyboard.GetState().IsKeyDown(Keys.A) || mousePos.X <= 1)
                 isoView.ViewOffset.X -= scrollSpeed * dt;
-            if (Keyboard.GetState().IsKeyDown(Keys.Right) || mousePos.X >= screenWidth - 2)
+            if (Keyboard.GetState().IsKeyDown(Keys.Right) || Keyboard.GetState().IsKeyDown(Keys.D) || mousePos.X >= screenWidth - 2)
                 isoView.ViewOffset.X += scrollSpeed * dt;
-            if (Keyboard.GetState().IsKeyDown(Keys.Up) || mousePos.Y <= 1)
+            if (Keyboard.GetState().IsKeyDown(Keys.Up) || Keyboard.GetState().IsKeyDown(Keys.W) || mousePos.Y <= 1)
                 isoView.ViewOffset.Y -= scrollSpeed * dt;
-            if (Keyboard.GetState().IsKeyDown(Keys.Down) || mousePos.Y >= screenHeight - 2)
+            if (Keyboard.GetState().IsKeyDown(Keys.Down) || Keyboard.GetState().IsKeyDown(Keys.S) || mousePos.Y >= screenHeight - 2)
                 isoView.ViewOffset.Y += scrollSpeed * dt;
 
-            if (Keyboard.GetState().IsKeyDown(Keys.A) && Keyboard.GetState().IsKeyDown(Keys.W))
-                walkState.Walk(Direction.West);
-            else if (Keyboard.GetState().IsKeyDown(Keys.W) && Keyboard.GetState().IsKeyDown(Keys.D))
-                walkState.Walk(Direction.North);
-            else if (Keyboard.GetState().IsKeyDown(Keys.S) && Keyboard.GetState().IsKeyDown(Keys.D))
-                walkState.Walk(Direction.East);
-            else if (Keyboard.GetState().IsKeyDown(Keys.S) && Keyboard.GetState().IsKeyDown(Keys.A))
-                walkState.Walk(Direction.South);
-            else if (Keyboard.GetState().IsKeyDown(Keys.A))
-                walkState.Walk(Direction.SouthWest);
-            else if (Keyboard.GetState().IsKeyDown(Keys.S))
-                walkState.Walk(Direction.SouthEast);
-            else if (Keyboard.GetState().IsKeyDown(Keys.D))
-                walkState.Walk(Direction.NorthEast);
-            else if (Keyboard.GetState().IsKeyDown(Keys.W))
-                walkState.Walk(Direction.NorthWest);
 
-            if (!isoView.Level.Map.IsPassable(walkState.Target))
-                walkState.Walking = false;
+            if (lastMouseState.LeftButton == ButtonState.Released && mouseState.LeftButton == ButtonState.Pressed) {
+                // just testing pathfinding
+                if (pathFind == null)
+                    pathFind = new PathFind(isoView.Level.Map.Width, isoView.Level.Map.Height);
+                isoView.PathSet.Clear();
+                pathIndex = 0;
+                if (pathFind.Search(player.MapCoord, isoView.HoveredTile, pathList, isoView.Level.Map.GetCost)) {
+                    foreach (var c in pathList)
+                        isoView.PathSet.Add(c);
+                }
+            }
 
-            playerAnim.Direction = walkState.Direction;
-            walkState.Update(dt);
-            playerAnim.Update(dt);
+            if (!player.Walking && pathIndex < pathList.Count) {
+                player.Walk(pathList[pathIndex++]);
+            }
+            player.Update(dt);
+            isoView.Level.Map.PlaceCreature(player);
+
 
             if (music != null && !musicPlaying && gameTime.TotalGameTime.Seconds > 4) {
                 music.Play();
                 musicPlaying = true;
             }
 
+            lastMouseState = mouseState;
             base.Update(gameTime);
         }
 
-
-        private void DrawPlayer()
-        {
-            var p = isoView.TileToScreen(walkState.Position);
-            var frame = playerAnim.CurrentFrame;
-
-
-            spriteBatch.Draw(
-                (Texture2D)frame.Texture,
-                new Vector2(p.X - frame.Width*0.5f + 32, p.Y - frame.Height + 15),
-                sourceRectangle: frame.SourceRect.ToXnaRect()
-            );
-        }
 
         protected override void Draw(GameTime gameTime)
         {
@@ -260,7 +210,6 @@ namespace Primevil
 
             spriteBatch.Begin();
             isoView.DrawMap();
-            DrawPlayer();
             //if (charAtlas != null)
             //    spriteBatch.Draw((Texture2D)charAtlas.Texture, new Vector2(0, 0));
             //spriteBatch.Draw((Texture2D)charAtlas.Texture, new Rectangle(0, 0, screenHeight, screenHeight), Color.White);

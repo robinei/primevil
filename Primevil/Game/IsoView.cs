@@ -15,11 +15,18 @@ namespace Primevil.Game
         public delegate void TileDrawer(object texture, Coord pos, Rect sourceRect);
         public TileDrawer DrawTile;
 
-        private readonly HashSet<Coord> pathSet = new HashSet<Coord>();
-        private readonly List<Coord>  pathList = new List<Coord>();
-        private PathFind pathFind;
+        // just testing pathfinding
+        public readonly HashSet<Coord> PathSet = new HashSet<Coord>();
 
 
+        public void CenterOn(Coord c)
+        {
+            var wc = TileToWorld(c).ToCoordF();
+            ViewOffset = new CoordF(wc.X - ViewSize.Width/2.0f, wc.Y - ViewSize.Height/2.0f);
+        }
+
+
+        #region Coordinate conversions
         public static Coord TileToWorld(Coord tilePos)
         {
             return TileToWorld(tilePos.ToCoordF()).ToCoord();
@@ -64,21 +71,12 @@ namespace Primevil.Game
                 (-screenPos.X * h + screenPos.Y * w + xoff * h - yoff * w) / wh2
             );
         }
+        #endregion
+
 
         public void DrawMap()
         {
-            const int tileWidth = 64;
-            const int tileHeight = 32;
             var map = Level.Map;
-
-            // just testing pathfinding
-            if (pathFind == null)
-                pathFind = new PathFind(map.Width, map.Height);
-            pathSet.Clear();
-            if (pathFind.Search(new Coord(0, 0), HoveredTile, pathList, map.GetCost)) {
-                foreach (var c in pathList)
-                    pathSet.Add(c);
-            }
 
             // calc coordinate of upper left corner of screen
             var tilePos = ScreenToTile(new Coord(0, 0));
@@ -96,26 +94,27 @@ namespace Primevil.Game
             int x0 = x;
             int i = i0, j = j0;
             while (y < ViewSize.Height + 300) {
-                for (; x < ViewSize.Width; x += tileWidth, ++i, --j) {
-                    if (i == HoveredTile.X && j == HoveredTile.Y)
-                        continue;
-                    if (pathSet.Contains(new Coord(i, j)))
-                        continue;
+                for (; x < ViewSize.Width; x += TileWidth, ++i, --j) {
+                    //if (i == HoveredTile.X && j == HoveredTile.Y)
+                    //    continue;
+                    //if (PathSet.Contains(new Coord(i, j)))
+                    //    continue;
                     if (i < 0 || j < 0 || i >= map.Width || j >= map.Height)
                         continue;
-                    //if (!map.IsPassable(i, j))
-                    //    continue;
-                    int minIndex = map.GetPillar(i, j);
-                    if (minIndex < 0)
-                        continue;
 
-                    DrawPillar(minIndex, x, y);
+                    int minIndex = map.GetPillar(i, j);
+                    if (minIndex >= 0)
+                        DrawPillar(minIndex, x, y);
+
+                    var creature = map.GetCreature(new Coord(i, j));
+                    if (creature != null)
+                        DrawCreature(creature);
                 }
 
                 x = x0;
-                y += tileHeight / 2;
+                y += TileHeight / 2;
                 if (++row % 2 != 0) {
-                    x -= tileWidth / 2;
+                    x -= TileWidth / 2;
                     ++j0;
                 } else {
                     ++i0;
@@ -125,16 +124,23 @@ namespace Primevil.Game
             }
         }
 
+        private void DrawCreature(Creature c)
+        {
+            var p = TileToScreen(c.Position).ToCoord();
+            var f = c.CurrentAnimation.CurrentFrame;
+            DrawTile(f.Texture, new Coord(p.X - f.Width/2 + 32, p.Y - f.Height + 15), f.SourceRect);
+        }
+
         private void DrawPillar(int pillarIndex, int xPos, int yPos)
         {
             int maxY = Level.PillarDefs.PillarHeight;
-            yPos -= (maxY - 1) * 32; // yPos initially points to position of lowest tile
+            yPos -= (maxY - 1) * TileHeight; // yPos initially points to position of lowest tile
             for (int x = 0; x < 2; ++x) {
                 for (int y = 0; y < maxY; ++y) {
                     int celIndex = Level.PillarDefs.GetCelIndex(pillarIndex, x, y);
                     if (celIndex < 0)
                         continue;
-                    DrawTile(Level.Tileset.Texture, new Coord(xPos + x * 32, yPos + y * 32),
+                    DrawTile(Level.Tileset.Texture, new Coord(xPos + x * TileWidth / 2, yPos + y * TileHeight),
                         Level.Tileset.Rects[celIndex]);
                 }
             }

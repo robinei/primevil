@@ -1,21 +1,16 @@
-﻿using System;
-
-namespace Primevil.Game
+﻿namespace Primevil.Game
 {
     public class Map
     {
-        private struct Cell
-        {
-            public int Pillar;
-        }
-
         public readonly int Width;
         public readonly int Height;
 
-        private readonly Cell[] cells;
+        private readonly short[] pillars;
         private readonly byte[] flags;
+        private readonly Creature[] creatures;
 
         private const int FlagPassable = 1;
+
 
         public Map(int width, int height)
         {
@@ -23,20 +18,21 @@ namespace Primevil.Game
             Height = height;
 
             int size = width * height;
-            cells = new Cell[size];
+            pillars = new short[size];
             flags = new byte[size];
-            for (int i = 0; i < size; ++i) {
-                cells[i].Pillar = -1;
-                flags[i] = 0;
-            }
+            creatures = new Creature[size];
+
+            for (int i = 0; i < size; ++i)
+                pillars[i] = -1;
         }
+
 
         public void PlaceSector(SectorTemplate sector, int x, int y)
         {
             for (int j = 0; j < sector.Height; ++j) {
                 for (int i = 0; i < sector.Width; ++i) {
                     var index = (y + j) * Width + x + i;
-                    cells[index].Pillar = sector.GetPillar(i, j);
+                    pillars[index] = (short)sector.GetPillar(i, j);
                     byte f = 0;
                     if (sector.IsPassable(i, j))
                         f |= FlagPassable;
@@ -45,9 +41,11 @@ namespace Primevil.Game
             }
         }
 
+
         public int GetPillar(int x, int y) {
-            return cells[y * Width + x].Pillar;
+            return pillars[y * Width + x];
         }
+
 
         public bool IsPassable(int x, int y)
         {
@@ -64,6 +62,26 @@ namespace Primevil.Game
         public float GetCost(Coord pos, Direction fromDir)
         {
             return IsPassable(pos) ? 1.0f : float.MaxValue;
+        }
+
+
+        public void PlaceCreature(Creature c)
+        {
+            var pos = c.Position.ToCoord();
+            c.MapCoord = pos;
+            creatures[pos.Y * Width + pos.X] = c;
+        }
+
+        public Creature GetCreature(Coord pos)
+        {
+            int index = pos.Y * Width + pos.X;
+            var c = creatures[index];
+            if (c != null) {
+                if (c.MapCoord == pos)
+                    return c;
+                creatures[index] = null;
+            }
+            return null;
         }
     }
 }

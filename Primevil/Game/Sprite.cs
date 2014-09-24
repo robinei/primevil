@@ -1,7 +1,7 @@
 ﻿
 namespace Primevil.Game
 {
-    class Sprite
+    public class Sprite
     {
         public struct Frame
         {

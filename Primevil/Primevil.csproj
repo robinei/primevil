@@ -44,7 +44,9 @@
     <Compile Include="Formats\MPQArchive.cs" />
     <Compile Include="Game\Animation.cs" />
     <Compile Include="Game\Coord.cs" />
+    <Compile Include="Game\Creature.cs" />
     <Compile Include="Game\Direction.cs" />
+    <Compile Include="Game\Intrusive.cs" />
     <Compile Include="Game\IsoView.cs" />
     <Compile Include="Game\PathFind.cs" />
     <Compile Include="Game\Size.cs" />
