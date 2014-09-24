@@ -1,6 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Diagnostics;
-using Microsoft.Xna.Framework.Graphics;
 
 namespace Primevil.Game
 {
@@ -17,7 +15,9 @@ namespace Primevil.Game
         public delegate void TileDrawer(object texture, Coord pos, Rect sourceRect);
         public TileDrawer DrawTile;
 
-        private readonly HashSet<Coord> pathCoords = new HashSet<Coord>();
+        private readonly HashSet<Coord> pathSet = new HashSet<Coord>();
+        private readonly List<Coord>  pathList = new List<Coord>();
+        private PathFind pathFind;
 
 
         public static Coord TileToWorld(Coord tilePos)
@@ -67,17 +67,18 @@ namespace Primevil.Game
 
         public void DrawMap()
         {
-            var pf = new PathFind(Level.Map);
-            var path = pf.Search(new Coord(0, 0), HoveredTile);
-            pathCoords.Clear();
-            if (path != null) {
-                foreach (var c in path)
-                    pathCoords.Add(c);
-            }
-
             const int tileWidth = 64;
             const int tileHeight = 32;
             var map = Level.Map;
+
+            // just testing pathfinding
+            if (pathFind == null)
+                pathFind = new PathFind(map.Width, map.Height);
+            pathSet.Clear();
+            if (pathFind.Search(new Coord(0, 0), HoveredTile, pathList, map.GetCost)) {
+                foreach (var c in pathList)
+                    pathSet.Add(c);
+            }
 
             // calc coordinate of upper left corner of screen
             var tilePos = ScreenToTile(new Coord(0, 0));
@@ -98,7 +99,7 @@ namespace Primevil.Game
                 for (; x < ViewSize.Width; x += tileWidth, ++i, --j) {
                     if (i == HoveredTile.X && j == HoveredTile.Y)
                         continue;
-                    if (pathCoords.Contains(new Coord(i, j)))
+                    if (pathSet.Contains(new Coord(i, j)))
                         continue;
                     if (i < 0 || j < 0 || i >= map.Width || j >= map.Height)
                         continue;

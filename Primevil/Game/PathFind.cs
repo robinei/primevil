@@ -5,8 +5,12 @@ namespace Primevil.Game
 {
     class PathFind
     {
-        private const uint OpenList = 1;
-        private const uint ClosedList = 2;
+        private enum NodeState
+        {
+            Virgin, // never before seen
+            Open,   // expanded, but not examined
+            Closed  // examined
+        };
 
         private struct Node
         {
@@ -27,7 +31,7 @@ namespace Primevil.Game
             // index of node in heap
             public int Index
             {
-                get { return (int)((field >> 5) & IndexMask); }
+                get { return (int)(field >> 5); }
                 set { field = (field & ~(IndexMask << 5)) | ((uint)value << 5); }
             }
 
@@ -40,12 +44,18 @@ namespace Primevil.Game
             }
 
             // lowest 2 bits.
-            // whether node is in open/closed list or neither
-            public uint List
+            // whether node is in open/closed state or neither
+            public NodeState State
             {
-                get { return field & ListMask; }
-                set { field = (field & ~ListMask) | value; }
+                get { return (NodeState)(field & ListMask); }
+                set { field = (field & ~ListMask) | (uint)value; }
             }
+        }
+
+        private static float CalcHeuristicDistance(Coord a, Coord b)
+        {
+            // manhattan distance
+            return (Math.Abs(b.X - a.X) + Math.Abs(b.Y - a.Y)) * HScale;
         }
 
         private const float HScale = 1.0f;
@@ -53,131 +63,143 @@ namespace Primevil.Game
         private const float MaxCost = 10000.0f;
 
         private readonly List<int> heap = new List<int>();
-        private readonly List<Coord> path = new List<Coord>();
         private readonly Node[] nodes;
-        private readonly Map map;
+        private readonly int width, height;
+
+        // calculate the cost of entering a node. can return float.MaxValue to
+        // make a node impassable
+        public delegate float NodeEvaluator(Coord pos, Direction fromDir);
 
 
-        public PathFind(Map map)
+        public PathFind(int width, int height)
         {
-            nodes = new Node[map.Width * map.Height];
-            this.map = map;
+            this.width = width;
+            this.height = height;
+            nodes = new Node[width * height];
         }
+
 
         /*
          * Implements A* search.
          * A custom array based binary heap is used to track the best Open node,
          * and nodes are looked up by direct addresing using their coordinates in the
          * compact nodes array, so we don't need a separate associative container to
-         * represent the Closed list.
+         * represent the Closed set.
          */
-        public Coord[] Search(Coord start, Coord goal)
+        public bool Search(Coord start, Coord goal, List<Coord> resultPath, NodeEvaluator costFunc)
         {
-            if (start.X < 0 || start.Y < 0 || start.X >= map.Width || start.Y >= map.Height)
-                return null;
-            if (goal.X < 0 || goal.Y < 0 || goal.X >= map.Width || goal.Y >= map.Height)
-                return null;
+            resultPath.Clear();
+            if (start.X < 0 || start.Y < 0 || start.X >= width || start.Y >= height)
+                return false;
+            if (goal.X < 0 || goal.Y < 0 || goal.X >= width || goal.Y >= height)
+                return false;
             if (start == goal)
-                return new Coord[]{};
+                return true;
 
             heap.Clear();
-            path.Clear();
-            for (int i = 0; i < map.Width * map.Height; ++i)
-                nodes[i] = new Node();
+            ClearNodes();
 
-            int n = start.Y * map.Width + start.X;
-            nodes[n].H = Heuristic(start, goal);
-            nodes[n].List = OpenList;
+            int n = start.Y * width + start.X;
+            nodes[n].H = CalcHeuristicDistance(start, goal);
+            nodes[n].State = NodeState.Open;
             PushHeap(n);
 
             while (heap.Count > 0) {
-                // examine the best node in the Open list and mark it as Closed
+                // examine the best node in the Open set and mark it as Closed
                 n = PopHeap();
-                nodes[n].List = ClosedList;
-                var pos = new Coord(n % map.Width, n / map.Width);
+                nodes[n].State = NodeState.Closed;
+                var pos = new Coord(n % width, n / width);
 
                 // are we there yet?
                 if (pos == goal) {
                     // walk backward to the start while remembering the coords we pass by
-                    path.Add(pos);
                     do {
+                        resultPath.Add(pos);
                         pos += nodes[n].ParentDir.DeltaCoord();
-                        path.Add(pos);
-                        n = pos.Y * map.Width + pos.X;
+                        n = pos.Y * width + pos.X;
                     } while (pos != start);
                     // reverse it, so the path is in the expected sequence from start to goal
-                    path.Reverse();
-                    return path.ToArray();
+                    resultPath.Reverse();
+                    return true;
                 }
 
                 // expand all surrounding squares
                 for (int d = 0; d < 8; ++d) {
                     var dir = (Direction)d;
+                    var fromDir = dir.Opposite();
                     var p = pos + dir.DeltaCoord();
 
-                    // we depend on coords outside the map to return false as well
-                    if (!map.IsPassable(p))
+                    if (p.X < 0 || p.Y < 0 || p.X >= width || p.Y >= height)
                         continue;
 
                     // calc index of node to expand
-                    int t = p.Y * map.Width + p.X;
-                    
+                    int t = p.Y * width + p.X;
+
                     // if it is on the ClosedList then we have already examined it
-                    if (nodes[t].List == ClosedList)
+                    if (nodes[t].State == NodeState.Closed)
                         continue;
 
-                    // get the cost of moving into this cell from our direction
-                    float cost = nodes[n].G + dir.StepDistance() * GScale;
+                    // get the cost of moving into cell t from our direction
+                    float cost = dir.StepDistance() * costFunc(p, fromDir) * GScale;
                     if (cost > MaxCost)
                         continue;
 
-                    if (nodes[t].List == OpenList) {
-                        // the node is on the Open list,
-                        // meaning it's been expanded but not examined.
+                    // add to it the cost of reaching cell n
+                    cost += nodes[n].G;
+
+                    if (nodes[t].State == NodeState.Open) {
+                        // this node has previously been expanded, but not examined
+                        // check to see if this path was a better way to reach it
                         if (cost < nodes[t].G) {
                             // if the new path to this node is better, update cost and
                             // parent then correct the heap according to cost change
                             nodes[t].G = cost;
-                            nodes[t].ParentDir = dir.Opposite();
+                            nodes[t].ParentDir = fromDir;
                             UpHeap(nodes[t].Index);
                         }
                     } else {
                         // we've never seen this node before
-                        nodes[t].H = Heuristic(p, goal);
+                        nodes[t].H = CalcHeuristicDistance(p, goal);
                         nodes[t].G = cost;
-                        nodes[t].ParentDir = dir.Opposite();
-                        nodes[t].List = OpenList;
+                        nodes[t].ParentDir = fromDir;
+                        nodes[t].State = NodeState.Open;
                         PushHeap(t);
                     }
                 }
             }
 
-            return null;
+            return false;
         }
 
 
-        static float Heuristic(Coord a, Coord b)
+        private void ClearNodes()
         {
-            // manhattan distance
-            return (Math.Abs(b.X - a.X) + Math.Abs(b.Y - a.Y)) * HScale;
+            nodes[0] = new Node();
+            nodes[1] = new Node();
+            nodes[2] = new Node();
+            nodes[3] = new Node();
+            int count, length = nodes.Length;
+            for (count = 4; count <= length / 2; count *= 2)
+                Array.Copy(nodes, 0, nodes, count, count);
+            Array.Copy(nodes, 0, nodes, count, length - count);
         }
-        
-        bool CmpHeap(int i, int j)
+
+        private bool CmpHeap(int i, int j)
         {
             var a = nodes[heap[i]];
             var b = nodes[heap[j]];
             return (a.G + a.H) < (b.G + b.H);
         }
 
-        void PushHeap(int n)
+        private void PushHeap(int n)
         {
             var index = heap.Count;
             nodes[n].Index = index;
             heap.Add(n);
             UpHeap(index);
         }
-    
-        int PopHeap()
+
+        private int PopHeap()
         {
             int top = heap[0];
             int last = heap[heap.Count - 1];
@@ -187,20 +209,22 @@ namespace Primevil.Game
             DownHeap(0);
             return top;
         }
-    
-        void UpHeap(int i) {
+
+        private void UpHeap(int i)
+        {
             while(i > 0) {
-                int p = (i - 1) >> 1; // parent
+                int p = (i - 1) / 2; // parent
                 if(!CmpHeap(i, p)) break;
                 SwapHeap(i, p);
                 i = p;
             }
         }
 
-        void DownHeap(int i) {
+        private void DownHeap(int i)
+        {
             while(true) {
-                int c1 = (i << 1) + 1; // child 1
-                int c2 = (i << 1) + 2; // child 2
+                int c1 = (i * 2) + 1; // child 1
+                int c2 = (i * 2) + 2; // child 2
             
                 if(c1 < heap.Count && CmpHeap(c1, i)) {
                     if(c2 < heap.Count && CmpHeap(c2, c1)) {
@@ -219,8 +243,9 @@ namespace Primevil.Game
                 else break;
             }
         }
-    
-        void SwapHeap(int i, int j) {
+
+        private void SwapHeap(int i, int j)
+        {
             int temp = heap[i];
             heap[i] = heap[j];
             heap[j] = temp;

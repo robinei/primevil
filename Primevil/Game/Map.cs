@@ -60,6 +60,11 @@ namespace Primevil.Game
         {
             return IsPassable(c.X, c.Y);
         }
+
+        public float GetCost(Coord pos, Direction fromDir)
+        {
+            return IsPassable(pos) ? 1.0f : float.MaxValue;
+        }
     }
 }
 
