@@ -3,42 +3,38 @@ namespace Primevil.Game
 {
     public class Animation
     {
-        private readonly Sprite sprite;
-        private readonly float frameDelay;
         private float timer;
         private int index;
-        private Direction direction;
+
+        public readonly Sprite Sprite;
+        public readonly float FrameDelay;
+        public Direction Direction;
+        public object Texture { get { return Sprite.Texture; } }
 
         public Animation(Sprite sprite, float frameDelay)
         {
-            this.sprite = sprite;
-            this.frameDelay = frameDelay;
+            Sprite = sprite;
+            FrameDelay = frameDelay;
         }
 
-        public Sprite Sprite { get { return sprite; } }
-
-        public Direction Direction
+        public Rect CurrentRect
         {
-            get { return direction; }
-            set
-            {
-                direction = value;
-                index = index % sprite.GetFrameCount(direction);
-            }
+            get { return Sprite.GetRect(Direction, index); }
+        }
+
+        public void Reset()
+        {
+            timer = 0.0f;
+            index = 0;
         }
 
         public void Update(float dt)
         {
             timer += dt;
-            if (timer >= frameDelay) {
-                timer -= frameDelay;
-                index = (index + 1) % sprite.GetFrameCount(direction);
+            if (timer >= FrameDelay) {
+                timer -= FrameDelay;
+                index = (index + 1) % Sprite.FrameCount;
             }
-        }
-
-        public Sprite.Frame CurrentFrame
-        {
-            get { return sprite.GetFrame(direction, index); }
         }
     }
 }

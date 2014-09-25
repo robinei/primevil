@@ -10,6 +10,7 @@
 
         public Coord MapCoord;
         public CoordF Position;
+        public Direction Direction;
         public Coord Target;
         public bool Walking;
 
@@ -26,8 +27,13 @@
 
         public void Update(float dt)
         {
-            if (CurrentAnimation != null)
+            if (MapCoord != Target)
+                Direction = MapCoord.DirectionTo(Target);
+
+            if (CurrentAnimation != null) {
                 CurrentAnimation.Update(dt);
+                CurrentAnimation.Direction = Direction;
+            }
             
             if (!Walking)
                 return;
@@ -50,7 +56,6 @@
                 moveAmount = len;
             d.Normalize();
             Position = Position + (d * moveAmount);
-            MapCoord = Position.ToCoord();
         }
     }
 }

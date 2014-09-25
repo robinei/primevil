@@ -1,42 +1,32 @@
-﻿
-namespace Primevil.Game
+﻿namespace Primevil.Game
 {
     public class Sprite
     {
-        public struct Frame
-        {
-            public object Texture;
-            public Rect SourceRect;
+        private object texture;
+        private Rect[] rects;
 
-            public int Width { get { return SourceRect.Width; } }
-            public int Height { get { return SourceRect.Height; } }
+        public Sprite(object texture, Rect[] rects)
+        {
+            this.texture = texture;
+            this.rects = rects;
         }
 
-        private readonly int[] frameCounts;
-        private readonly Frame[] frames;
-
-        public Sprite(int[] frameCounts, Frame[] frames)
+        public Sprite(TextureAtlas atlas)
         {
-            this.frameCounts = frameCounts;
-            this.frames = frames;
+            texture = atlas.Texture;
+            rects = atlas.Rects;
         }
 
-        public int DirectionCount
+        public object Texture { get { return texture; } }
+
+        public int FrameCount
         {
-            get { return frameCounts.Length; }
+            get { return rects.Length / 8; }
         }
 
-        public int GetFrameCount(Direction direction)
+        public Rect GetRect(Direction direction, int index)
         {
-            return frameCounts[(int)direction];
-        }
-
-        public Frame GetFrame(Direction direction, int index)
-        {
-            int offset = 0;
-            for (int i = 0; i < (int)direction; ++i)
-                offset += frameCounts[i];
-            return frames[offset + index];
+            return rects[(int)direction * FrameCount + index];
         }
     }
 }

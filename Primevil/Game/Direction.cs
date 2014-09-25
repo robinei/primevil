@@ -4,14 +4,14 @@ namespace Primevil.Game
 {
     public enum Direction
     {
+        SouthEast,
         South,
         SouthWest,
         West,
         NorthWest,
         North,
         NorthEast,
-        East,
-        SouthEast
+        East
     }
 
     public static class DirectionExtensions

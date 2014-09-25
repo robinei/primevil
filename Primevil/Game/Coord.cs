@@ -47,6 +47,23 @@ namespace Primevil.Game
             }
         }
 
+        // intended to be used for adjacent coordinates
+        public Direction DirectionTo(Coord c)
+        {
+            if (c.X < X) {
+                if (c.Y < Y) return Direction.NorthWest;
+                if (c.Y > Y) return Direction.SouthWest;
+                return Direction.West;
+            }
+            if (c.X > X) {
+                if (c.Y < Y) return Direction.NorthEast;
+                if (c.Y > Y) return Direction.SouthEast;
+                return Direction.East;
+            }
+            if (c.Y < Y) return Direction.North;
+            if (c.Y > Y) return Direction.South;
+            return Direction.North; // same coordinate, but we just say north
+        }
 
         public static Coord operator +(Coord a, Coord b)
         {

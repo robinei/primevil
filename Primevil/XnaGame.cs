@@ -49,7 +49,7 @@ namespace Primevil
 
         private IsoView isoView;
         private TextureAtlas charAtlas;
-        private Animation playerAnim;
+        private Animation standingAnim, walkingAnim;
         private Creature player;
         private readonly List<Coord> pathList = new List<Coord>();
         private int pathIndex = 0;
@@ -86,7 +86,7 @@ namespace Primevil
                 DrawTile = (texture, pos, rect) =>
                     spriteBatch.Draw((Texture2D)texture, pos.ToVector2(), sourceRectangle: rect.ToXnaRect())
             };
-            isoView.CenterOn(new Coord(75, 68));
+            //isoView.CenterOn(new CoordF(75.5f, 68.5f));
 
             TextureAtlasPacker.TextureCreator = (data, width, height) => {
                 var tex = new Texture2D(GraphicsDevice, width, height, false, SurfaceFormat.Color);
@@ -112,35 +112,23 @@ namespace Primevil
                 music = new SoundEffect(wavData, 22050, AudioChannels.Stereo);
             }*/
 
-            var palette = new byte[768];
-            using (var f = new FileStream("Content/palette.pal", FileMode.Open, FileAccess.Read)) {
-                var len = f.Read(palette, 0, 768);
-                Debug.Assert(len == 768);
-            }
+            charAtlas = TextureAtlas.Load(mpq, PlayerGfx.GetAnimPath(
+                PlayerGfx.Class.Warrior,
+                PlayerGfx.Armor.Light,
+                PlayerGfx.Weapon.MaceShield,
+                PlayerGfx.State.StandingInTown));
+            standingAnim = new Animation(new Sprite(charAtlas), 1.0f / 13);
 
-            var packer = new TextureAtlasPacker(1024);
-            var celFile = CELFile.Load(mpq, "plrgfx/warrior/wls/wlswl.cl2");
-            for (int i = 0; i < celFile.NumFrames; ++i) {
-                var frame = celFile.GetFrame(i, palette);
-                int rectId = packer.Insert(frame.Data, frame.Width, frame.Height, true);
-                if (rectId < 0)
-                    throw new Exception("atlas is full: " + i);
-            }
-
-            charAtlas = packer.CreateAtlas();
-
-            var playerSprite = new Sprite(new []{8,8,8,8,8,8,8,8},
-                Enumerable.Range(0, 8*8).Select(index => new Sprite.Frame {
-                    Texture = charAtlas.Texture,
-                    SourceRect = charAtlas.Rects[index]
-                }
-            ).ToArray());
-
-            playerAnim = new Animation(playerSprite, 1.0f / 10);
+            charAtlas = TextureAtlas.Load(mpq, PlayerGfx.GetAnimPath(
+                PlayerGfx.Class.Warrior,
+                PlayerGfx.Armor.Light,
+                PlayerGfx.Weapon.MaceShield,
+                PlayerGfx.State.WalkingInTown));
+            walkingAnim = new Animation(new Sprite(charAtlas), 1.0f / 13);
 
             player = new Creature {
                 Position = new CoordF(75.5f, 68.5f),
-                CurrentAnimation = playerAnim
+                CurrentAnimation = standingAnim
             };
             isoView.Level.Creatures.PushBack(player);
             isoView.Level.Map.PlaceCreature(player);
@@ -179,19 +167,24 @@ namespace Primevil
                 // just testing pathfinding
                 if (pathFind == null)
                     pathFind = new PathFind(isoView.Level.Map.Width, isoView.Level.Map.Height);
-                isoView.PathSet.Clear();
                 pathIndex = 0;
                 if (pathFind.Search(player.MapCoord, isoView.HoveredTile, pathList, isoView.Level.Map.GetCost)) {
-                    foreach (var c in pathList)
-                        isoView.PathSet.Add(c);
                 }
             }
 
             if (!player.Walking && pathIndex < pathList.Count) {
                 player.Walk(pathList[pathIndex++]);
             }
-            player.Update(dt);
-            isoView.Level.Map.PlaceCreature(player);
+            if (player.Walking && player.CurrentAnimation == standingAnim) {
+                player.CurrentAnimation = walkingAnim;
+                walkingAnim.Reset();
+            }
+            else if (!player.Walking && player.CurrentAnimation == walkingAnim) {
+                player.CurrentAnimation = standingAnim;
+                standingAnim.Reset();
+            }
+            isoView.Level.Update(dt);
+            isoView.CenterOn(player.Position);
 
 
             if (music != null && !musicPlaying && gameTime.TotalGameTime.Seconds > 4) {

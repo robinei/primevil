@@ -14,6 +14,14 @@ namespace Primevil.Game
         public Level()
         {
         }
+
+        public void Update(float dt)
+        {
+            foreach (var creature in Creatures) {
+                creature.Update(dt);
+                Map.PlaceCreature(creature);
+            }
+        }
     }
 }
 

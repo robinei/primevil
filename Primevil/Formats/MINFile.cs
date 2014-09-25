@@ -40,7 +40,8 @@ namespace Primevil.Formats
             get { return indexes.Length / pillarSize; }
         }
 
-        public int GetCelIndex(int minIndex, int x, int y) // x is [0, 1], y is [0, 5 or 8]
+        // get index of tile in cel file, for coord x (x, y) in this pillar
+        public int GetTileIndex(int minIndex, int x, int y) // x is [0, 1], y is [0, 5 or 8]
         {
             int offset = minIndex * pillarSize + y * 2 + x;
             int val = indexes[offset];

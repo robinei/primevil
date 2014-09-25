@@ -1,5 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using Primevil.Formats;
 
 namespace Primevil.Game
 {
@@ -7,6 +10,38 @@ namespace Primevil.Game
     {
         public Rect[] Rects;
         public object Texture; // opaque to avoid dependency
+
+
+        private static readonly byte[] DefaultPalette = new byte[768];
+
+        static TextureAtlas()
+        {
+            using (var f = new FileStream("Content/palette.pal", FileMode.Open, FileAccess.Read)) {
+                var len = f.Read(DefaultPalette, 0, 768);
+                Debug.Assert(len == 768);
+            }
+        }
+
+        public static TextureAtlas Load(MPQArchive mpq, string path, byte[] palette = null)
+        {
+            if (palette == null)
+                palette = DefaultPalette;
+            var celFile = CELFile.Load(mpq, path);
+            int sheetDim = 1024;
+            while (true) {
+              loop:
+                var packer = new TextureAtlasPacker(sheetDim);
+                for (int i = 0; i < celFile.NumFrames; ++i) {
+                    var frame = celFile.GetFrame(i, palette);
+                    int rectId = packer.Insert(frame.Data, frame.Width, frame.Height, true);
+                    if (rectId < 0) {
+                        sheetDim *= 2;
+                        goto loop;
+                    }
+                }
+                return packer.CreateAtlas();
+            }
+        }
     }
 
 
