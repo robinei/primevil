@@ -9,9 +9,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-#if WINDOWS
-using System.Windows.Forms;
-#endif
 using ButtonState = Microsoft.Xna.Framework.Input.ButtonState;
 using Keys = Microsoft.Xna.Framework.Input.Keys;
 
@@ -70,17 +67,9 @@ namespace Primevil
         protected override void Initialize()
         {
             IsMouseVisible = true;
-#if WINDOWS
-            var screen = Screen.FromHandle(Window.Handle) ?? Screen.PrimaryScreen;
-            screenWidth = screen.Bounds.Width;
-            screenHeight = screen.Bounds.Height;
-            Window.IsBorderless = true;
-            Window.Position = new Point(screen.Bounds.X, screen.Bounds.Y);
-#else
             screenWidth = 1024;
             screenHeight = 768;
-            graphics.IsFullScreen = true;
-#endif
+            graphics.IsFullScreen = false;
             graphics.PreferredBackBufferWidth = screenWidth;
             graphics.PreferredBackBufferHeight = screenHeight;
             graphics.ApplyChanges();
@@ -109,12 +98,12 @@ namespace Primevil
             var mpq = new MPQArchive("DIABDAT.MPQ");
             isoView.Level = TownLevel.Load(mpq);
 
-            using (var wavStream = mpq.Open("music/dtowne.wav")) {
+            /*using (var wavStream = mpq.Open("music/dtowne.wav")) {
                 var wavData = new byte[wavStream.Length];
                 var wavLen = wavStream.Read(wavData, 0, (int)wavStream.Length);
                 Debug.Assert(wavLen == wavStream.Length);
                 music = new SoundEffect(wavData, 22050, AudioChannels.Stereo);
-            }
+            }*/
 
             charAtlas = TextureAtlas.Load(mpq, PlayerGfx.GetAnimPath(
                 PlayerGfx.Class.Warrior,
