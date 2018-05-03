@@ -2,7 +2,6 @@
 
 namespace Primevil
 {
-#if WINDOWS || LINUX
     public static class Program
     {
         [STAThread]
@@ -12,5 +11,4 @@ namespace Primevil
                 game.Run();
         }
     }
-#endif
 }
